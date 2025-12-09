@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
@@ -87,25 +86,21 @@ fun PhotoDetailScreen(
     var isUIVisible by remember { mutableStateOf(true) }
     
     // System UI control
-    val view = LocalView.current
     LaunchedEffect(isUIVisible) {
+        val window = (context as android.app.Activity).window
+        val windowInsetsController = window.insetsController
+        
         if (isUIVisible) {
             // Show system UI
-            val window = (context as android.app.Activity).window
-            window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            windowInsetsController?.show(android.view.WindowInsets.Type.systemBars())
             window.statusBarColor = android.graphics.Color.TRANSPARENT
             window.navigationBarColor = android.graphics.Color.TRANSPARENT
         } else {
             // Hide system UI (immersive mode)
-            val window = (context as android.app.Activity).window
-            window.decorView.systemUiVisibility = (
-                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
-            )
+            windowInsetsController?.let { controller ->
+                controller.hide(android.view.WindowInsets.Type.systemBars())
+                controller.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
         }
     }
     

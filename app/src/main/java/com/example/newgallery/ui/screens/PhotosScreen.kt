@@ -1,7 +1,6 @@
 package com.example.newgallery.ui.screens
 
 import android.Manifest
-import android.os.Build
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
@@ -43,13 +42,9 @@ val currentColumnCount = remember(gridScale) {
 (baseColumnCount * gridScale).toInt().coerceIn(minColumnCount, maxColumnCount)
 }
     
-    // 权限处理
+    // 权限处理 - Since minSdk is 30, we only need READ_MEDIA_IMAGES
     val permissionState = rememberPermissionState(
-        permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_IMAGES
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
+        permission = Manifest.permission.READ_MEDIA_IMAGES
     )
     
     val context = LocalContext.current

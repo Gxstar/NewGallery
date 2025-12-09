@@ -1,7 +1,6 @@
 package com.example.newgallery.ui.screens
 
 import android.Manifest
-import android.os.Build
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,13 +47,9 @@ import com.google.accompanist.permissions.shouldShowRationale
 fun AlbumsScreen(
     onAlbumClick: (album: com.example.newgallery.data.model.Album) -> Unit
 ) {
-    // Permission handling
+    // Permission handling - Since minSdk is 30, we only need READ_MEDIA_IMAGES
     val permissionState = rememberPermissionState(
-        permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Manifest.permission.READ_MEDIA_IMAGES
-        } else {
-            Manifest.permission.READ_EXTERNAL_STORAGE
-        }
+        permission = Manifest.permission.READ_MEDIA_IMAGES
     )
     
     val context = LocalContext.current
