@@ -70,6 +70,9 @@ dependencies {
 
     // ViewModel
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    
+    // ExifInterface
+    implementation("androidx.exifinterface:exifinterface:1.3.6")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

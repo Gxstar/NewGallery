@@ -25,6 +25,9 @@ class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory
             modelClass.isAssignableFrom(SearchViewModel::class.java) -> {
                 return SearchViewModel(PhotoRepository(context)) as T
             }
+            modelClass.isAssignableFrom(ScrollStateViewModel::class.java) -> {
+                return ScrollStateViewModel() as T
+            }
             else -> {
                 throw IllegalArgumentException("Unknown ViewModel class")
             }

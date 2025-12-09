@@ -17,8 +17,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.LazyColumn
+
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -35,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -42,7 +47,9 @@ import coil.request.ImageRequest
 import com.example.newgallery.data.model.Photo
 import com.example.newgallery.ui.theme.TextPrimary
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
+import com.example.newgallery.ui.viewmodel.ScrollStateViewModel
 import com.example.newgallery.ui.viewmodel.ViewModelFactory
+import com.example.newgallery.utils.ExifInfoUtil
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -59,6 +66,7 @@ fun PhotoDetailScreen(
     )
     val context = LocalContext.current
     val sharedViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(context))
+    val scrollStateViewModel: ScrollStateViewModel = viewModel(factory = ViewModelFactory(context))
     
     val allPhotos by sharedViewModel.allPhotos.collectAsState()
     
@@ -489,29 +497,243 @@ fun ExifInfoDialog(
     photo: Photo,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val exifInfo = remember(photo.id) {
+        ExifInfoUtil.extractExifInfo(context, photo.uri, photo.width, photo.height, photo.size)
+    }
+    
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.fillMaxWidth(0.95f),
         title = {
-            Text(text = "图片信息")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "图片信息",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "关闭",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
         },
         text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                InfoItem("文件名", photo.displayName)
-                InfoItem("路径", photo.uri.toString())
-                // TODO: Add more EXIF information when available
-                InfoItem("大小", "未知")
-                InfoItem("拍摄时间", "未知")
-                InfoItem("相机型号", "未知")
+                // 文件信息 - 简洁展示
+                item {
+                    InfoCard {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = photo.displayName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (exifInfo.fileSize != "未知") {
+                                Text(
+                                    text = exifInfo.fileSize,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                // 拍摄时间和设备信息
+                if (exifInfo.captureTime != "未知" || exifInfo.cameraModel != "未知") {
+                    item {
+                        InfoCard {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (exifInfo.captureTime != "未知") {
+                                    Text(
+                                        text = exifInfo.captureTime,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                if (exifInfo.cameraModel != "未知") {
+                                    Text(
+                                        text = exifInfo.cameraModel,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                if (exifInfo.lensModel != "未知") {
+                                    Text(
+                                        text = exifInfo.lensModel,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 曝光三要素 - 组合在一行
+                if (exifInfo.aperture != "未知" || exifInfo.shutterSpeed != "未知" || exifInfo.iso != "未知") {
+                    item {
+                        InfoCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (exifInfo.aperture != "未知") {
+                                    ExposureParameter(value = exifInfo.aperture)
+                                }
+                                if (exifInfo.shutterSpeed != "未知") {
+                                    ExposureParameter(value = exifInfo.shutterSpeed)
+                                }
+                                if (exifInfo.iso != "未知") {
+                                    ExposureParameter(value = exifInfo.iso)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 其他拍摄参数
+                if (exifInfo.focalLength != "未知" || exifInfo.resolution != "未知") {
+                    item {
+                        InfoCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (exifInfo.focalLength != "未知") {
+                                    SecondaryParameter(value = exifInfo.focalLength)
+                                }
+                                if (exifInfo.resolution != "未知") {
+                                    SecondaryParameter(value = exifInfo.resolution)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 高级设置
+                if (exifInfo.flash != "未知" || exifInfo.exposureMode != "未知" || 
+                    exifInfo.meteringMode != "未知" || exifInfo.whiteBalance != "未知") {
+                    item {
+                        InfoCard {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                if (exifInfo.flash != "未知") {
+                                    ParameterRow(label = "闪光灯", value = exifInfo.flash)
+                                }
+                                if (exifInfo.exposureMode != "未知") {
+                                    ParameterRow(label = "曝光模式", value = exifInfo.exposureMode)
+                                }
+                                if (exifInfo.meteringMode != "未知") {
+                                    ParameterRow(label = "测光模式", value = exifInfo.meteringMode)
+                                }
+                                if (exifInfo.whiteBalance != "未知") {
+                                    ParameterRow(label = "白平衡", value = exifInfo.whiteBalance)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("确定")
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "关闭",
+                    style = MaterialTheme.typography.labelLarge
+                )
             }
         }
     )
+}
+
+@Composable
+private fun InfoCard(
+    content: @Composable () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 0.dp
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun ExposureParameter(
+    value: String
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun SecondaryParameter(
+    value: String
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun ParameterRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
 }
 
 @Composable

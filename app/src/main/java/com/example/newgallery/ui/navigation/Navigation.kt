@@ -95,7 +95,10 @@ fun AppNavigation(
             PhotoDetailScreen(
                 photoId = photoId,
                 initialIndex = index,
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { 
+                    // Clear scroll state when going back
+                    navController.popBackStack() 
+                }
             )
         }
     }

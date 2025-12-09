@@ -5,10 +5,13 @@
     <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="36" />
 
     <!-- Permissions for reading media files -->
-    <!-- Since minSdk is 30, we only need the new media permissions -->
+    <!-- For API 33+ (Android 13+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+    <!-- For API 30-32 (Android 11-12) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
 
     <application
         android:allowBackup="true"

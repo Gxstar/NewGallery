@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,6 +23,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.newgallery.ui.components.PhotoItem
 import com.example.newgallery.ui.viewmodel.PhotosViewModel
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
+import com.example.newgallery.ui.viewmodel.ScrollStateViewModel
 import com.example.newgallery.ui.viewmodel.ViewModelFactory
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
@@ -42,14 +44,32 @@ val currentColumnCount = remember(gridScale) {
 (baseColumnCount * gridScale).toInt().coerceIn(minColumnCount, maxColumnCount)
 }
     
-    // 权限处理 - Since minSdk is 30, we only need READ_MEDIA_IMAGES
-    val permissionState = rememberPermissionState(
-        permission = Manifest.permission.READ_MEDIA_IMAGES
-    )
+    // 权限处理 - 兼容API 30-33
+    val permissionState = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        rememberPermissionState(
+            permission = Manifest.permission.READ_MEDIA_IMAGES
+        )
+    } else {
+        rememberPermissionState(
+            permission = Manifest.permission.READ_EXTERNAL_STORAGE
+        )
+    }
     
     val context = LocalContext.current
     val viewModel: PhotosViewModel = viewModel(factory = ViewModelFactory(context))
     val sharedViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(context))
+    val scrollStateViewModel: ScrollStateViewModel = viewModel(factory = ViewModelFactory(context))
+    
+    // 滚动位置状态
+    val lazyGridState = rememberLazyGridState()
+    
+    // 尝试恢复滚动位置
+    LaunchedEffect(Unit) {
+        lazyGridState.scrollToItem(
+            scrollStateViewModel.getSavedFirstVisibleItemIndex(),
+            scrollStateViewModel.getSavedFirstVisibleItemScrollOffset()
+        )
+    }
     
     val isLoading by viewModel.isLoading.collectAsState()
     val photosByYear by viewModel.photosByYear.collectAsState()
@@ -130,7 +150,12 @@ val currentColumnCount = remember(gridScale) {
                                 photosByYear = photosByYear,
                                 allPhotos = allPhotos,
                                 currentColumnCount = currentColumnCount,
-                                onPhotoClick = onPhotoClick
+                                lazyGridState = lazyGridState,
+                                onPhotoClick = { photo, index ->
+                                    // Save scroll position before navigating
+                                    scrollStateViewModel.saveScrollState(lazyGridState)
+                                    onPhotoClick(photo, index)
+                                }
                             )
                         }
                     }
@@ -174,10 +199,12 @@ private fun PhotosGridWithIOSZoom(
     photosByYear: Map<Int, List<com.example.newgallery.data.model.Photo>>,
     allPhotos: List<com.example.newgallery.data.model.Photo>,
     currentColumnCount: Int,
+    lazyGridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     onPhotoClick: (photo: com.example.newgallery.data.model.Photo, index: Int) -> Unit
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(currentColumnCount),
+        state = lazyGridState,
         modifier = Modifier
             .fillMaxSize(),
         contentPadding = PaddingValues(top = 48.dp, bottom = 16.dp),
