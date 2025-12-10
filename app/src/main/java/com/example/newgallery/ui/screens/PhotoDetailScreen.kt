@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,6 +91,7 @@ fun PhotoDetailScreen(
     // State for favorite and EXIF dialog
     var isFavorite by remember { mutableStateOf(false) }
     var showExifDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
     
     // State for UI visibility (top bar and bottom toolbar)
     var isUIVisible by remember { mutableStateOf(true) }
@@ -101,8 +104,6 @@ fun PhotoDetailScreen(
         if (isUIVisible) {
             // Show system UI
             windowInsetsController?.show(android.view.WindowInsets.Type.systemBars())
-            window.statusBarColor = android.graphics.Color.TRANSPARENT
-            window.navigationBarColor = android.graphics.Color.TRANSPARENT
         } else {
             // Hide system UI (immersive mode)
             windowInsetsController?.let { controller ->
@@ -330,7 +331,7 @@ fun PhotoDetailScreen(
                         },
                         onShareClick = { sharePhoto(context, currentPhoto.uri) },
                         onExifClick = { showExifDialog = true },
-                        onDeleteClick = { /* TODO: Implement delete functionality */ }
+                        onDeleteClick = { showDeleteDialog = true }
                     )
                         }
                     }
@@ -343,6 +344,55 @@ fun PhotoDetailScreen(
             ExifInfoDialog(
                 photo = photos[pagerState.currentPage],
                 onDismiss = { showExifDialog = false }
+            )
+        }
+        
+        // Delete Confirmation Dialog
+        if (showDeleteDialog && photos.isNotEmpty() && pagerState.currentPage < photos.size) {
+            val currentPhoto = photos[pagerState.currentPage]
+            
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = {
+                    Text(text = "删除照片")
+                },
+                text = {
+                    Text(text = "确定要删除这张照片吗？此操作无法撤销。")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            android.util.Log.d("PhotoDetail", "Delete confirmed, attempting to delete photo")
+                            deletePhoto(context, currentPhoto.uri) { success ->
+                                android.util.Log.d("PhotoDetail", "Delete operation completed with success: $success")
+                                if (success) {
+                                    // 删除成功，返回上一页
+                                    android.util.Log.d("PhotoDetail", "Delete successful, finishing activity")
+                                    (context as android.app.Activity).finish()
+                                } else {
+                                    // 删除失败，显示错误信息
+                                    android.util.Log.e("PhotoDetail", "Delete failed, showing error message")
+                                    showDeleteDialog = false
+                                    // 这里可以添加Toast或其他错误提示
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "删除失败，请检查权限设置",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Text("删除")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showDeleteDialog = false }
+                    ) {
+                        Text("取消")
+                    }
+                }
             )
         }
     }
@@ -502,78 +552,64 @@ fun ExifInfoDialog(
         ExifInfoUtil.extractExifInfo(context, photo.uri, photo.width, photo.height, photo.size)
     }
     
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.fillMaxWidth(0.95f),
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .wrapContentHeight(),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
             ) {
-                Text(
-                    text = "图片信息",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "关闭",
-                        tint = MaterialTheme.colorScheme.onSurface
+                // 标题栏
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "图片信息",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                }
-            }
-        },
-        text = {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // 文件信息 - 简洁展示
-                item {
-                    InfoCard {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = photo.displayName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (exifInfo.fileSize != "未知") {
-                                Text(
-                                    text = exifInfo.fileSize,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "关闭",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
                 
-                // 拍摄时间和设备信息
-                if (exifInfo.captureTime != "未知" || exifInfo.cameraModel != "未知") {
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // 内容区域
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 文件信息 - 简洁展示
                     item {
                         InfoCard {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                if (exifInfo.captureTime != "未知") {
+                                Text(
+                                    text = photo.displayName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (exifInfo.fileSize != "未知") {
                                     Text(
-                                        text = exifInfo.captureTime,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                if (exifInfo.cameraModel != "未知") {
-                                    Text(
-                                        text = exifInfo.cameraModel,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                if (exifInfo.lensModel != "未知") {
-                                    Text(
-                                        text = exifInfo.lensModel,
+                                        text = exifInfo.fileSize,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -581,87 +617,111 @@ fun ExifInfoDialog(
                             }
                         }
                     }
-                }
-                
-                // 曝光三要素 - 组合在一行
-                if (exifInfo.aperture != "未知" || exifInfo.shutterSpeed != "未知" || exifInfo.iso != "未知") {
-                    item {
-                        InfoCard {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (exifInfo.aperture != "未知") {
-                                    ExposureParameter(value = exifInfo.aperture)
+                    
+                    // 拍摄时间和设备信息
+                    if (exifInfo.captureTime != "未知" || exifInfo.cameraModel != "未知") {
+                        item {
+                            InfoCard {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    if (exifInfo.captureTime != "未知") {
+                                        Text(
+                                            text = exifInfo.captureTime,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    if (exifInfo.cameraModel != "未知") {
+                                        Text(
+                                            text = exifInfo.cameraModel,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    if (exifInfo.lensModel != "未知") {
+                                        Text(
+                                            text = exifInfo.lensModel,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
-                                if (exifInfo.shutterSpeed != "未知") {
-                                    ExposureParameter(value = exifInfo.shutterSpeed)
+                            }
+                        }
+                    }
+                    
+                    // 曝光三要素 - 组合在一行
+                    if (exifInfo.aperture != "未知" || exifInfo.shutterSpeed != "未知" || exifInfo.iso != "未知") {
+                        item {
+                            InfoCard {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (exifInfo.aperture != "未知") {
+                                        ExposureParameter(value = exifInfo.aperture)
+                                    }
+                                    if (exifInfo.shutterSpeed != "未知") {
+                                        ExposureParameter(value = exifInfo.shutterSpeed)
+                                    }
+                                    if (exifInfo.iso != "未知") {
+                                        ExposureParameter(value = exifInfo.iso)
+                                    }
                                 }
-                                if (exifInfo.iso != "未知") {
-                                    ExposureParameter(value = exifInfo.iso)
+                            }
+                        }
+                    }
+                    
+                    // 其他拍摄参数
+                    if (exifInfo.focalLength != "未知" || exifInfo.resolution != "未知") {
+                        item {
+                            InfoCard {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (exifInfo.focalLength != "未知") {
+                                        SecondaryParameter(value = exifInfo.focalLength)
+                                    }
+                                    if (exifInfo.resolution != "未知") {
+                                        SecondaryParameter(value = exifInfo.resolution)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 高级设置
+                    if (exifInfo.flash != "未知" || exifInfo.exposureMode != "未知" || 
+                        exifInfo.meteringMode != "未知" || exifInfo.whiteBalance != "未知" || 
+                        exifInfo.gpsLocation != "未知") {
+                        item {
+                            InfoCard {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    if (exifInfo.flash != "未知") {
+                                        ParameterRow(label = "闪光灯", value = exifInfo.flash)
+                                    }
+                                    if (exifInfo.exposureMode != "未知") {
+                                        ParameterRow(label = "曝光模式", value = exifInfo.exposureMode)
+                                    }
+                                    if (exifInfo.meteringMode != "未知") {
+                                        ParameterRow(label = "测光模式", value = exifInfo.meteringMode)
+                                    }
+                                    if (exifInfo.whiteBalance != "未知") {
+                                        ParameterRow(label = "白平衡", value = exifInfo.whiteBalance)
+                                    }
+                                    if (exifInfo.gpsLocation != "未知") {
+                                        ParameterRow(label = "GPS位置", value = exifInfo.gpsLocation)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                
-                // 其他拍摄参数
-                if (exifInfo.focalLength != "未知" || exifInfo.resolution != "未知") {
-                    item {
-                        InfoCard {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (exifInfo.focalLength != "未知") {
-                                    SecondaryParameter(value = exifInfo.focalLength)
-                                }
-                                if (exifInfo.resolution != "未知") {
-                                    SecondaryParameter(value = exifInfo.resolution)
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // 高级设置
-                if (exifInfo.flash != "未知" || exifInfo.exposureMode != "未知" || 
-                    exifInfo.meteringMode != "未知" || exifInfo.whiteBalance != "未知") {
-                    item {
-                        InfoCard {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                if (exifInfo.flash != "未知") {
-                                    ParameterRow(label = "闪光灯", value = exifInfo.flash)
-                                }
-                                if (exifInfo.exposureMode != "未知") {
-                                    ParameterRow(label = "曝光模式", value = exifInfo.exposureMode)
-                                }
-                                if (exifInfo.meteringMode != "未知") {
-                                    ParameterRow(label = "测光模式", value = exifInfo.meteringMode)
-                                }
-                                if (exifInfo.whiteBalance != "未知") {
-                                    ParameterRow(label = "白平衡", value = exifInfo.whiteBalance)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "关闭",
-                    style = MaterialTheme.typography.labelLarge
-                )
             }
         }
-    )
+    }
 }
 
 @Composable
@@ -822,7 +882,10 @@ private fun formatPhotoDate(context: android.content.Context, photo: com.example
         val inputStream = contentResolver.openInputStream(uri)
         inputStream?.use { stream ->
             val exifInterface = android.media.ExifInterface(stream)
-            val dateTime = exifInterface.getAttribute(android.media.ExifInterface.TAG_DATETIME)
+            // 按优先级检查不同的EXIF时间标签
+            val dateTime = exifInterface.getAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL) ?:
+                           exifInterface.getAttribute(android.media.ExifInterface.TAG_DATETIME_DIGITIZED) ?:
+                           exifInterface.getAttribute(android.media.ExifInterface.TAG_DATETIME)
             
             if (!dateTime.isNullOrEmpty()) {
                 // 解析EXIF时间格式 "yyyy:MM:dd HH:mm:ss"
@@ -858,5 +921,214 @@ private fun formatPhotoDate(context: android.content.Context, photo: com.example
     } catch (e: Exception) {
         // 出错时显示默认格式
         "未知时间"
+    }
+}
+
+/**
+ * 删除照片函数，使用最新的Android MediaStore API
+ */
+private fun deletePhoto(context: android.content.Context, photoUri: android.net.Uri, onComplete: (Boolean) -> Unit) {
+    try {
+        android.util.Log.d("PhotoDetail", "Starting delete operation for URI: $photoUri")
+        android.util.Log.d("PhotoDetail", "Android SDK version: ${android.os.Build.VERSION.SDK_INT}")
+        
+        val contentResolver = context.contentResolver
+        
+        // 检查URI的权限和类型
+        android.util.Log.d("PhotoDetail", "URI scheme: ${photoUri.scheme}")
+        android.util.Log.d("PhotoDetail", "URI authority: ${photoUri.authority}")
+        
+        // 尝试使用ContentResolver的delete方法，但添加更多错误处理
+        try {
+            // 检查我们是否有权限访问这个URI
+            contentResolver.query(photoUri, null, null, null, null)?.use { cursor ->
+                android.util.Log.d("PhotoDetail", "Successfully queried URI, cursor count: ${cursor.count}")
+            }
+            
+            // 尝试删除
+            val deletedRows = contentResolver.delete(photoUri, null, null)
+            android.util.Log.d("PhotoDetail", "Delete result: deletedRows = $deletedRows")
+            
+            if (deletedRows > 0) {
+                // 删除成功
+                android.util.Log.d("PhotoDetail", "Delete successful")
+                onComplete(true)
+                return
+            } else {
+                android.util.Log.w("PhotoDetail", "Delete returned 0 rows affected")
+            }
+        } catch (e: SecurityException) {
+            android.util.Log.e("PhotoDetail", "SecurityException during delete", e)
+        } catch (e: Exception) {
+            android.util.Log.e("PhotoDetail", "Exception during delete", e)
+        }
+        
+        // 如果直接删除失败，尝试其他方法
+        android.util.Log.d("PhotoDetail", "Direct delete failed, trying alternative methods")
+        performTraditionalDelete(contentResolver, photoUri, context, onComplete)
+        
+    } catch (e: Exception) {
+        android.util.Log.e("PhotoDetail", "Error initiating photo deletion", e)
+        onComplete(false)
+    }
+}
+
+/**
+ * 执行传统的删除操作
+ */
+private fun performTraditionalDelete(
+    contentResolver: android.content.ContentResolver,
+    photoUri: android.net.Uri,
+    context: android.content.Context,
+    onComplete: (Boolean) -> Unit
+) {
+    try {
+        android.util.Log.d("PhotoDetail", "Attempting to delete URI: $photoUri")
+        
+        // 对于Android 11+，我们需要使用不同的方法
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            android.util.Log.d("PhotoDetail", "Using Android 11+ delete method")
+            
+            // 尝试使用ContentResolver的delete方法，但在Android 11+中可能需要特殊处理
+            try {
+                val deletedRows = contentResolver.delete(
+                    photoUri,
+                    null,
+                    null
+                )
+                
+                android.util.Log.d("PhotoDetail", "Android 11+ delete result: $deletedRows")
+                
+                if (deletedRows > 0) {
+                    // 删除成功
+                    android.util.Log.d("PhotoDetail", "Delete successful on Android 11+")
+                    onComplete(true)
+                    return
+                }
+            } catch (e: SecurityException) {
+                android.util.Log.e("PhotoDetail", "SecurityException on Android 11+", e)
+            }
+            
+            // 如果Android 11+的删除失败，尝试使用MediaStore API
+            try {
+                val selection = "${android.provider.MediaStore.MediaColumns._ID} = ?"
+                val selectionArgs = arrayOf(photoUri.lastPathSegment?.split(":")?.lastOrNull() ?: "")
+                
+                val deletedRows = contentResolver.delete(
+                    android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    selection,
+                    selectionArgs
+                )
+                
+                android.util.Log.d("PhotoDetail", "MediaStore delete result: $deletedRows")
+                
+                if (deletedRows > 0) {
+                    android.util.Log.d("PhotoDetail", "MediaStore delete successful")
+                    onComplete(true)
+                    return
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("PhotoDetail", "MediaStore delete failed", e)
+            }
+        } else {
+            // 对于较旧的Android版本，使用传统方法
+            android.util.Log.d("PhotoDetail", "Using traditional delete method")
+            
+            val deletedRows = contentResolver.delete(
+                photoUri,
+                null,
+                null
+            )
+            
+            val success = deletedRows > 0
+            android.util.Log.d("PhotoDetail", "Traditional delete result: $success, deleted rows: $deletedRows")
+            
+            if (success) {
+                // 通知媒体扫描器更新
+                android.media.MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(photoUri.toString()),
+                    null
+                ) { path, uri ->
+                    android.util.Log.d("PhotoDetail", "Media scanner completed for: $path")
+                }
+                onComplete(true)
+                return
+            }
+        }
+        
+        // 如果所有方法都失败，尝试直接删除文件
+        android.util.Log.d("PhotoDetail", "All delete methods failed, trying direct file deletion")
+        tryDeleteFileDirectly(photoUri, context, onComplete)
+        
+    } catch (e: SecurityException) {
+        android.util.Log.e("PhotoDetail", "Permission denied when deleting photo", e)
+        // 尝试使用文件系统删除
+        tryDeleteFileDirectly(photoUri, context, onComplete)
+    } catch (e: Exception) {
+        android.util.Log.e("PhotoDetail", "Error deleting photo", e)
+        onComplete(false)
+    }
+}
+
+/**
+ * 尝试直接删除文件
+ */
+private fun tryDeleteFileDirectly(
+    photoUri: android.net.Uri, 
+    context: android.content.Context,
+    onComplete: (Boolean) -> Unit
+) {
+    try {
+        android.util.Log.d("PhotoDetail", "Attempting direct file deletion for URI: $photoUri")
+        
+        // 尝试从URI获取文件路径
+        val cursor: android.database.Cursor? = context.contentResolver.query(
+            photoUri, 
+            arrayOf(android.provider.MediaStore.MediaColumns.DATA), 
+            null, 
+            null, 
+            null
+        )
+        
+        val filePath: String? = cursor?.use { c ->
+            if (c.moveToFirst()) {
+                c.getString(c.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATA))
+            } else null
+        }
+        
+        android.util.Log.d("PhotoDetail", "Extracted file path: $filePath")
+        
+        if (filePath != null) {
+            val file = java.io.File(filePath)
+            android.util.Log.d("PhotoDetail", "File exists: ${file.exists()}, File path: ${file.absolutePath}")
+            
+            if (file.exists()) {
+                val success = file.delete()
+                android.util.Log.d("PhotoDetail", "Direct file delete result: $success")
+                
+                if (success) {
+                    // 通知媒体扫描器更新
+                    android.media.MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(filePath),
+                        null
+                    ) { path, uri ->
+                        android.util.Log.d("PhotoDetail", "Media scanner completed for: $path")
+                    }
+                }
+                
+                onComplete(success)
+            } else {
+                android.util.Log.w("PhotoDetail", "File does not exist at path: $filePath")
+                onComplete(false)
+            }
+        } else {
+            android.util.Log.w("PhotoDetail", "Could not extract file path from URI")
+            onComplete(false)
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("PhotoDetail", "Error deleting file directly", e)
+        onComplete(false)
     }
 }

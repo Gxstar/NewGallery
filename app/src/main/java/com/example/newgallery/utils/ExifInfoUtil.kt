@@ -23,6 +23,7 @@ data class ExifInfo(
     val exposureMode: String = "未知",
     val meteringMode: String = "未知",
     val whiteBalance: String = "未知",
+    val gpsLocation: String = "未知",
     val fileSize: String = "未知",
     val fileFormat: String = "未知"
 )
@@ -67,6 +68,7 @@ object ExifInfoUtil {
                 val exposureMode = extractExposureMode(exif)
                 val meteringMode = extractMeteringMode(exif)
                 val whiteBalance = extractWhiteBalance(exif)
+                val gpsLocation = extractGPSLocation(exif)
                 
                 // 提取文件信息
                 val fileSize = if (size > 0) formatFileSize(size) else "未知"
@@ -85,6 +87,7 @@ object ExifInfoUtil {
                     exposureMode = exposureMode,
                     meteringMode = meteringMode,
                     whiteBalance = whiteBalance,
+                    gpsLocation = gpsLocation,
                     fileSize = fileSize,
                     fileFormat = fileFormat
                 )
@@ -372,6 +375,27 @@ object ExifInfoUtil {
             }
         } catch (e: Exception) {
             Log.d("ExifInfoUtil", "Failed to extract white balance: $e")
+            "未知"
+        }
+    }
+    
+    /**
+     * 提取GPS位置信息
+     */
+    private fun extractGPSLocation(exif: ExifInterface): String {
+        return try {
+            // 获取经纬度
+            val latLong = exif.latLong
+            if (latLong != null) {
+                val latitude = latLong[0]
+                val longitude = latLong[1]
+                // 格式化为度分秒格式
+                String.format("%.6f, %.6f", latitude, longitude)
+            } else {
+                "未知"
+            }
+        } catch (e: Exception) {
+            Log.d("ExifInfoUtil", "Failed to extract GPS location: $e")
             "未知"
         }
     }
