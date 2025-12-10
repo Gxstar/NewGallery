@@ -1,23 +1,27 @@
 package com.example.newgallery.ui.screens
 
 import android.Manifest
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,20 +41,31 @@ import com.example.newgallery.ui.theme.TextSecondary
 import com.example.newgallery.ui.viewmodel.AlbumsViewModel
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
 import com.example.newgallery.ui.viewmodel.ViewModelFactory
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.PermissionStatus
-import com.google.accompanist.permissions.rememberPermissionState
-import com.google.accompanist.permissions.shouldShowRationale
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumsScreen(
     onAlbumClick: (album: com.example.newgallery.data.model.Album) -> Unit
 ) {
-    // Permission handling - Since minSdk is 30, we only need READ_MEDIA_IMAGES
-    val permissionState = rememberPermissionState(
-        permission = Manifest.permission.READ_MEDIA_IMAGES
-    )
+    // 标准Android权限处理 - API 30+ 只需要 READ_MEDIA_IMAGES
+    val permissionGranted = remember { mutableStateOf(false) }
+    val showPermissionRationale = remember { mutableStateOf(false) }
+    
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        permissionGranted.value = isGranted
+        if (!isGranted) {
+            // 检查是否需要显示权限说明
+            showPermissionRationale.value = true
+        } else {
+            showPermissionRationale.value = false
+        }
+    }
     
     val context = LocalContext.current
     val viewModel: AlbumsViewModel = viewModel(factory = ViewModelFactory(context))
@@ -60,23 +75,36 @@ fun AlbumsScreen(
     val albums by viewModel.albums.collectAsState()
     val error by viewModel.error.collectAsState()
     
-    // Request permission when screen is composed
+    // 请求权限当屏幕首次加载时
     LaunchedEffect(Unit) {
-        permissionState.launchPermissionRequest()
+        permissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
     }
     
-    // Load albums when permission is granted
-    LaunchedEffect(permissionState.status) {
-        if (permissionState.status == PermissionStatus.Granted) {
+    // 当权限被授予时加载相册
+    LaunchedEffect(permissionGranted.value) {
+        if (permissionGranted.value) {
             viewModel.loadAlbums()
             sharedViewModel.loadAllPhotos()
         }
     }
     
-    Box(modifier = Modifier.fillMaxSize()) {
-        when (permissionState.status) {
-            PermissionStatus.Granted -> {
-                // Show albums when permission is granted
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 顶栏
+        TopAppBar(
+            title = { Text(text = "相册") },
+            actions = {
+                IconButton(onClick = { /* TODO: 添加设置菜单 */ }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "更多选项"
+                    )
+                }
+            }
+        )
+        
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (permissionGranted.value) {
+                // 权限已授予时显示相册
                 if (isLoading) {
                     CircularProgressIndicator(
                         modifier = Modifier.align(Alignment.Center)
@@ -105,16 +133,15 @@ fun AlbumsScreen(
                             AlbumItem(
                                 album = album,
                                 onClick = { 
-                                    // Navigate to album photos
+                                    // 导航到相册照片
                                     onAlbumClick(album)
                                 }
                             )
                         }
                     }
                 }
-            }
-            is PermissionStatus.Denied -> {
-                // Show permission denied UI
+            } else {
+                // 权限未授予时显示权限请求UI
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.Center,
@@ -125,7 +152,7 @@ fun AlbumsScreen(
                         modifier = Modifier.padding(16.dp),
                         textAlign = TextAlign.Center
                     )
-                    if (permissionState.status.shouldShowRationale) {
+                    if (showPermissionRationale.value) {
                         Text(
                             text = "请授予权限以查看您的相册",
                             modifier = Modifier.padding(16.dp),
@@ -134,7 +161,7 @@ fun AlbumsScreen(
                     }
                     Button(
                         onClick = {
-                            permissionState.launchPermissionRequest()
+                            permissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
                         },
                         modifier = Modifier.padding(16.dp)
                     ) {

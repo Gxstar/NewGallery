@@ -42,6 +42,8 @@ class SharedPhotoViewModel(
             _error.value = null
             
             try {
+                // Clear cache before loading to ensure fresh data
+                photoRepository.clearCache()
                 val photos = photoRepository.getAllPhotos()
                 _allPhotos.value = photos
             } catch (e: Exception) {
@@ -50,6 +52,18 @@ class SharedPhotoViewModel(
                 _isLoading.value = false
             }
         }
+    }
+    
+    /**
+     * Remove a specific photo from the current list (used after deletion)
+     */
+    fun removePhoto(photoId: Long) {
+        val currentPhotos = _allPhotos.value.toMutableList()
+        currentPhotos.removeAll { it.id == photoId }
+        _allPhotos.value = currentPhotos
+        
+        // Also remove from repository cache
+        photoRepository.removePhotoFromCache(photoId)
     }
     
     /**

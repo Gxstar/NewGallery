@@ -18,16 +18,16 @@ class PhotosViewModel(private val photoRepository: PhotoRepository) : ViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
     
-    // State for photos grouped by year
-    private val _photosByYear = MutableStateFlow<Map<Int, List<Photo>>>(emptyMap())
-    val photosByYear: StateFlow<Map<Int, List<Photo>>> = _photosByYear.asStateFlow()
+    // State for photos grouped by date
+    private val _photosByDate = MutableStateFlow<Map<String, List<Photo>>>(emptyMap())
+    val photosByDate: StateFlow<Map<String, List<Photo>>> = _photosByDate.asStateFlow()
     
     // State for error message
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
     
     /**
-     * Load all photos grouped by year
+     * Load all photos grouped by date
      */
     fun loadPhotos() {
         viewModelScope.launch {
@@ -35,8 +35,8 @@ class PhotosViewModel(private val photoRepository: PhotoRepository) : ViewModel(
             _error.value = null
             
             try {
-                val photos = photoRepository.getPhotosGroupedByYear()
-                _photosByYear.value = photos
+                val photosByDate = photoRepository.getPhotosGroupedByDate()
+                _photosByDate.value = photosByDate
             } catch (e: Exception) {
                 _error.value = "Failed to load photos: ${e.message}"
             } finally {

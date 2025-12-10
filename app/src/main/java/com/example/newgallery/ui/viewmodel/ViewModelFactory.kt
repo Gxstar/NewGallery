@@ -3,6 +3,7 @@ package com.example.newgallery.ui.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.example.newgallery.NewGalleryApplication
 import com.example.newgallery.data.repository.PhotoRepository
 
 /**
@@ -10,20 +11,21 @@ import com.example.newgallery.data.repository.PhotoRepository
  */
 class ViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
     
+    private val photoRepository: PhotoRepository by lazy {
+        (context.applicationContext as NewGalleryApplication).photoRepository
+    }
+    
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         when {
             modelClass.isAssignableFrom(PhotosViewModel::class.java) -> {
-                return PhotosViewModel(PhotoRepository(context)) as T
+                return PhotosViewModel(photoRepository) as T
             }
             modelClass.isAssignableFrom(AlbumsViewModel::class.java) -> {
-                return AlbumsViewModel(PhotoRepository(context)) as T
+                return AlbumsViewModel(photoRepository) as T
             }
             modelClass.isAssignableFrom(SharedPhotoViewModel::class.java) -> {
-                return SharedPhotoViewModel(PhotoRepository(context)) as T
-            }
-            modelClass.isAssignableFrom(SearchViewModel::class.java) -> {
-                return SearchViewModel(PhotoRepository(context)) as T
+                return SharedPhotoViewModel(photoRepository) as T
             }
             modelClass.isAssignableFrom(ScrollStateViewModel::class.java) -> {
                 return ScrollStateViewModel() as T

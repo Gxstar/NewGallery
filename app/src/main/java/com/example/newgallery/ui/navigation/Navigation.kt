@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -109,41 +110,34 @@ fun BottomNavigationBar(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // iOS-style liquid glass capsule navigation
+    // iOS-style 精致悬浮导航栏
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 32.dp, vertical = 24.dp)
+            .padding(horizontal = 64.dp, vertical = 32.dp) // 进一步增加水平边距，减少宽度
     ) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
-            shadowElevation = 16.dp,
-            tonalElevation = 8.dp,
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+            shape = RoundedCornerShape(24.dp), // 稍微减少圆角
+            shadowElevation = 12.dp, // 减少阴影强度
+            tonalElevation = 6.dp, // 减少色调高度
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), // 进一步增加透明度
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp)
+                .height(60.dp) // 减少高度
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 12.dp), // 稍微增加内边距以容纳文字
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 navigationItems.forEach { item ->
                     val isSelected = currentDestination?.hierarchy?.any { it.route == item.route } == true
                     
-                    // Navigation item container with liquid glass effect
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                        } else {
-                            androidx.compose.ui.graphics.Color.Transparent
-                        },
+                    // 导航项容器 - 图标+文字设计
+                    Column(
                         modifier = Modifier
-                            .size(56.dp)
                             .clickable {
                                 navController.navigate(item.route) {
                                     popUpTo(navController.graph.findStartDestination().id) {
@@ -153,11 +147,25 @@ fun BottomNavigationBar(navController: NavHostController) {
                                     restoreState = true
                                 }
                             }
+                            .padding(horizontal = 8.dp, vertical = 6.dp), // 调整内边距
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
+                        // 图标容器
                         Box(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.size(32.dp), // 图标容器尺寸
                             contentAlignment = Alignment.Center
                         ) {
+                            // 选中状态的背景效果
+                            if (isSelected) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp), // 适配小尺寸
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    modifier = Modifier.size(28.dp)
+                                ) {}
+                            }
+                            
+                            // 图标
                             Icon(
                                 imageVector = when (item.route) {
                                     Routes.PHOTOS -> Icons.Default.PhotoLibrary
@@ -165,7 +173,7 @@ fun BottomNavigationBar(navController: NavHostController) {
                                     else -> Icons.Default.PhotoLibrary
                                 },
                                 contentDescription = item.label,
-                                modifier = Modifier.size(26.dp),
+                                modifier = Modifier.size(20.dp), // 稍微减小图标尺寸
                                 tint = if (isSelected) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
@@ -173,6 +181,18 @@ fun BottomNavigationBar(navController: NavHostController) {
                                 }
                             )
                         }
+                        
+                        // 文字标签
+                        Text(
+                            text = item.label,
+                            style = MaterialTheme.typography.labelSmall, // 使用小字体
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            },
+                            modifier = Modifier.padding(top = 2.dp) // 图标和文字间距
+                        )
                     }
                 }
             }
