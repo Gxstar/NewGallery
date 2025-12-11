@@ -57,7 +57,7 @@ object ExifInfoUtil {
                 // 提取相机信息
                 val cameraModel = exif.getAttribute(ExifInterface.TAG_MODEL) ?: "未知"
                 val lensModel = exif.getAttribute("LensModel") ?: 
-                               exif.getAttribute("LensModel") ?: "未知"
+      exif.getAttribute("LensModel") ?: "未知"
                 
                 // 提取拍摄参数
                 val aperture = extractAperture(exif)
@@ -223,7 +223,7 @@ object ExifInfoUtil {
                                 if (result == result.toInt().toDouble()) {
                                     "${result.toInt()}"
                                 } else {
-                                    String.format("%.1f", result)
+                                    String.format(Locale.getDefault(), "%.1f", result)
                                 }
                             } else {
                                 focalLength
@@ -237,13 +237,13 @@ object ExifInfoUtil {
                             if (value == value.toInt().toDouble()) {
                                 "${value.toInt()}"
                             } else {
-                                String.format("%.1f", value)
+                                String.format(Locale.getDefault(), "%.1f", value)
                             }
                         } else {
                             focalLength
                         }
                     }
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     focalLength
                 }
                 
@@ -263,7 +263,7 @@ object ExifInfoUtil {
                                     if (result == result.toInt().toDouble()) {
                                         "${result.toInt()}"
                                     } else {
-                                        String.format("%.1f", result)
+                                        String.format(Locale.getDefault(), "%.1f", result)
                                     }
                                 } else {
                                     focalLength35mm
@@ -277,14 +277,14 @@ object ExifInfoUtil {
                                 if (value == value.toInt().toDouble()) {
                                     "${value.toInt()}"
                                 } else {
-                                    String.format("%.1f", value)
+                                    String.format(Locale.getDefault(), "%.1f", value)
                                 }
                             } else {
                                 focalLength35mm
                             }
                         }
                         "${focalLengthValue}mm (${equivalentValue}mm)"
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         "${focalLengthValue}mm"
                     }
                 } else {
@@ -390,7 +390,7 @@ object ExifInfoUtil {
                 val latitude = latLong[0]
                 val longitude = latLong[1]
                 // 格式化为度分秒格式
-                String.format("%.6f, %.6f", latitude, longitude)
+                String.format(Locale.getDefault(), "%.6f, %.6f", latitude, longitude)
             } else {
                 "未知"
             }

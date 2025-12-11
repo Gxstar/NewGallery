@@ -71,8 +71,8 @@ dependencies {
     // ViewModel
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     
-    // ExifInterface
-    implementation("androidx.exifinterface:exifinterface:1.3.6")
+    // ExifInterface - 1.4.0+ 支持AVIF格式
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
