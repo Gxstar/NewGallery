@@ -24,6 +24,8 @@ data class ExifInfo(
     val meteringMode: String = "未知",
     val whiteBalance: String = "未知",
     val gpsLocation: String = "未知",
+    val gpsLatitude: Double? = null,
+    val gpsLongitude: Double? = null,
     val fileSize: String = "未知",
     val fileFormat: String = "未知"
 )
@@ -68,7 +70,7 @@ object ExifInfoUtil {
                 val exposureMode = extractExposureMode(exif)
                 val meteringMode = extractMeteringMode(exif)
                 val whiteBalance = extractWhiteBalance(exif)
-                val gpsLocation = extractGPSLocation(exif)
+                val (gpsLocation, gpsLatitude, gpsLongitude) = extractGPSLocation(exif)
                 
                 // 提取文件信息
                 val fileSize = if (size > 0) formatFileSize(size) else "未知"
@@ -88,6 +90,8 @@ object ExifInfoUtil {
                     meteringMode = meteringMode,
                     whiteBalance = whiteBalance,
                     gpsLocation = gpsLocation,
+                    gpsLatitude = gpsLatitude,
+                    gpsLongitude = gpsLongitude,
                     fileSize = fileSize,
                     fileFormat = fileFormat
                 )
@@ -382,21 +386,27 @@ object ExifInfoUtil {
     /**
      * 提取GPS位置信息
      */
-    private fun extractGPSLocation(exif: ExifInterface): String {
+    private fun extractGPSLocation(exif: ExifInterface): Triple<String, Double?, Double?> {
         return try {
             // 获取经纬度
             val latLong = exif.latLong
-            if (latLong != null) {
+            Log.d("ExifInfoUtil", "提取GPS位置: latLong=$latLong")
+            
+            if (latLong != null && latLong.size >= 2) {
                 val latitude = latLong[0]
                 val longitude = latLong[1]
+                Log.d("ExifInfoUtil", "提取到GPS坐标: 纬度=$latitude, 经度=$longitude")
+                
                 // 格式化为度分秒格式
-                String.format(Locale.getDefault(), "%.6f, %.6f", latitude, longitude)
+                val formattedLocation = String.format(Locale.getDefault(), "%.6f, %.6f", latitude, longitude)
+                Triple(formattedLocation, latitude, longitude)
             } else {
-                "未知"
+                Log.d("ExifInfoUtil", "未找到有效的GPS信息")
+                Triple("未知", null, null)
             }
         } catch (e: Exception) {
             Log.d("ExifInfoUtil", "Failed to extract GPS location: $e")
-            "未知"
+            Triple("未知", null, null)
         }
     }
     
@@ -426,6 +436,27 @@ object ExifInfoUtil {
             "${size / (1024 * 1024)}MB"
         } else {
             "${size / (1024 * 1024 * 1024)}GB"
+        }
+    }
+
+    /**
+     * 检查图片是否包含GPS信息
+     */
+    fun hasGpsInfo(context: Context, uri: Uri): Boolean {
+        return try {
+            val contentResolver = context.contentResolver
+            val inputStream = contentResolver.openInputStream(uri)
+            
+            inputStream?.use { stream ->
+                val exif = ExifInterface(stream)
+                val latLong = exif.latLong
+                val hasGps = latLong != null && latLong.size >= 2
+                Log.d("ExifInfoUtil", "检查GPS信息: hasGps=$hasGps, latLong=$latLong")
+                hasGps
+            } ?: false
+        } catch (e: Exception) {
+            Log.d("ExifInfoUtil", "Error checking GPS info: $e")
+            false
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.example.newgallery.ui.screens
 
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 import java.text.SimpleDateFormat
 import java.util.*
 import androidx.compose.animation.core.animateFloatAsState
@@ -12,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
@@ -41,6 +44,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Settings
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -49,11 +55,19 @@ import com.example.newgallery.ui.theme.TextPrimary
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
 import com.example.newgallery.ui.viewmodel.ViewModelFactory
 import com.example.newgallery.utils.ExifInfoUtil
+import com.example.newgallery.utils.CoordinateConverter
+import com.example.newgallery.utils.SettingsManager
 import com.example.newgallery.MainActivity
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.IntentFilter
 import android.content.Intent as AndroidIntent
+import android.content.pm.PackageManager
+import android.provider.MediaStore
+import android.widget.Toast
+import android.util.Log
 
 @Composable
 fun PhotoDetailScreen(
@@ -101,7 +115,7 @@ fun PhotoDetailScreen(
     var isUIVisible by remember { mutableStateOf(true) }
     
     // Store current photo ID for deletion callback
-    var currentPhotoId by remember { mutableStateOf(photoId) }
+    var currentPhotoId by remember { mutableLongStateOf(photoId) }
     
     // Broadcast receiver to handle photo deletion events
     val photoDeletedReceiver = remember {
@@ -201,32 +215,37 @@ fun PhotoDetailScreen(
                             .height(100.dp)
                             .padding(top = 24.dp) // 增加与状态栏的距离
                     ) {
-                    // Back button
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 16.dp)
-                            .size(48.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = TextPrimary
-                        )
-                    }
-                
-                // Photo info - 显示拍摄时间
-                    val currentPhoto = photos[pagerState.currentPage]
-                    Text(
-                text = formatPhotoDate(context, currentPhoto), // 使用EXIF或文件时间
-                color = TextPrimary,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp),
-                maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // 返回按钮
+                            IconButton(
+                                onClick = onBackClick,
+                                modifier = Modifier
+                                    .padding(start = 16.dp)
+                                    .size(48.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "返回",
+                                    tint = TextPrimary
+                                )
+                            }
+                            
+                            // 拍摄时间信息
+                            if (photos.isNotEmpty() && pagerState.currentPage < photos.size) {
+                                val currentPhoto = photos[pagerState.currentPage]
+                                Text(
+                                    text = formatPhotoDate(context, currentPhoto),
+                                    color = TextPrimary,
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -248,7 +267,7 @@ fun PhotoDetailScreen(
                             .fillMaxSize()
                             .pointerInput(Unit) {
                                 detectTransformGestures(
-                                    onGesture = { centroid, pan, zoom, _ ->
+                                    onGesture = { _, pan, zoom, _ ->
                                         val newScale = (scale * zoom).coerceIn(1f, 5f)
                                         scale = newScale
                                         
@@ -299,7 +318,7 @@ fun PhotoDetailScreen(
                             .fillMaxSize()
                             .pointerInput(Unit) {
                                 detectTransformGestures(
-                                    onGesture = { centroid, pan, zoom, _ ->
+                                    onGesture = { _, _, zoom, _ ->
                                         val newScale = (scale * zoom).coerceIn(1f, 5f)
                                         
                                         if (newScale > 1f || zoom != 1f) {
@@ -424,6 +443,92 @@ fun PhotoDetailScreen(
                 }
             )
         }
+        
+    }
+}
+
+/**
+ * 检查GPS坐标是否有效（不为0）
+ */
+private fun isValidGpsCoordinate(latitude: Double?, longitude: Double?): Boolean {
+    return latitude != null && longitude != null && 
+           latitude != 0.0 && longitude != 0.0 &&
+           latitude >= -90.0 && latitude <= 90.0 &&
+           longitude >= -180.0 && longitude <= 180.0
+}
+
+/**
+ * 打开地图应用显示指定位置
+ */
+private fun openMapWithLocation(context: Context, latitude: Double, longitude: Double) {
+    android.util.Log.d("PhotoDetail", "原始GPS坐标: 纬度=$latitude, 经度=$longitude")
+    
+    // 根据系统语言和地区判断是否需要坐标转换
+    val (convertedLat, convertedLng) = CoordinateConverter.getConvertedCoordinates(latitude, longitude)
+    android.util.Log.d("PhotoDetail", "转换后坐标: 纬度=$convertedLat, 经度=$convertedLng")
+    
+    try {
+        // 首先尝试使用geo URI方案，这通常会打开默认的地图应用
+        val uri = "geo:$convertedLat,$convertedLng?q=$convertedLat,$convertedLng(照片位置)"
+        android.util.Log.d("PhotoDetail", "使用geo URI: $uri")
+        
+        val mapIntent = AndroidIntent().apply {
+            action = AndroidIntent.ACTION_VIEW
+            data = android.net.Uri.parse(uri)
+            addFlags(AndroidIntent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        
+        // 对于API 30+，直接使用try-catch来处理无法找到应用的情况
+        try {
+            android.util.Log.d("PhotoDetail", "尝试启动地图应用...")
+            context.startActivity(mapIntent)
+            android.util.Log.d("PhotoDetail", "地图应用启动成功")
+            return // 如果成功打开，直接返回
+        } catch (e: android.content.ActivityNotFoundException) {
+            android.util.Log.w("PhotoDetail", "未找到地图应用，尝试使用浏览器", e)
+        } catch (e: Exception) {
+            android.util.Log.e("PhotoDetail", "打开地图应用失败", e)
+        }
+        
+        // 备选方案1：使用Google Maps网页版
+        try {
+            val webUri = "https://www.google.com/maps?q=$convertedLat,$convertedLng"
+            android.util.Log.d("PhotoDetail", "尝试使用Google Maps网页版: $webUri")
+            
+            val webIntent = AndroidIntent().apply {
+                action = AndroidIntent.ACTION_VIEW
+                data = android.net.Uri.parse(webUri)
+                addFlags(AndroidIntent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(webIntent)
+            android.util.Log.d("PhotoDetail", "Google Maps网页版启动成功")
+            return // 如果成功打开，直接返回
+        } catch (e: android.content.ActivityNotFoundException) {
+            android.util.Log.e("PhotoDetail", "浏览器也打不开", e)
+        } catch (e: Exception) {
+            android.util.Log.e("PhotoDetail", "打开网页版地图失败", e)
+        }
+        
+        // 备选方案2：使用更通用的地图服务
+        try {
+            val fallbackUri = "https://maps.google.com/maps?q=$convertedLat,$convertedLng"
+            android.util.Log.d("PhotoDetail", "尝试使用通用地图服务: $fallbackUri")
+            
+            val fallbackIntent = AndroidIntent().apply {
+                action = AndroidIntent.ACTION_VIEW
+                data = android.net.Uri.parse(fallbackUri)
+                addFlags(AndroidIntent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(fallbackIntent)
+            android.util.Log.d("PhotoDetail", "通用地图服务启动成功")
+        } catch (e: Exception) {
+            android.util.Log.e("PhotoDetail", "所有地图打开方式都失败了", e)
+            android.widget.Toast.makeText(context, "无法打开地图应用，请检查是否安装了浏览器或地图应用", android.widget.Toast.LENGTH_SHORT).show()
+        }
+        
+    } catch (e: Exception) {
+        android.util.Log.e("PhotoDetail", "打开地图失败", e)
+        android.widget.Toast.makeText(context, "打开地图失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -836,7 +941,19 @@ fun ExifInfoDialog(
                                         ParameterRow(label = "白平衡", value = exifInfo.whiteBalance)
                                     }
                                     if (exifInfo.gpsLocation != "未知") {
-                                        ParameterRow(label = "GPS位置", value = exifInfo.gpsLocation)
+                                        val isValidGps = isValidGpsCoordinate(exifInfo.gpsLatitude, exifInfo.gpsLongitude)
+                                        android.util.Log.d("PhotoDetail", "GPS位置点击检查: gpsLatitude=${exifInfo.gpsLatitude}, gpsLongitude=${exifInfo.gpsLongitude}, isValid=$isValidGps")
+                                        
+                                        ParameterRow(
+                                            label = "GPS位置", 
+                                            value = exifInfo.gpsLocation,
+                                            onClick = if (isValidGps) {
+                                                { 
+                                                    android.util.Log.d("PhotoDetail", "GPS位置被点击，坐标: ${exifInfo.gpsLatitude}, ${exifInfo.gpsLongitude}")
+                                                    openMapWithLocation(context, exifInfo.gpsLatitude!!, exifInfo.gpsLongitude!!) 
+                                                }
+                                            } else null
+                                        )
                                     }
                                 }
                             }
@@ -900,41 +1017,62 @@ private fun SecondaryParameter(
 @Composable
 private fun ParameterRow(
     label: String,
-    value: String
+    value: String,
+    onClick: (() -> Unit)? = null
 ) {
+    val hasClickAction = onClick != null
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (hasClickAction) {
+                    Modifier
+                        .clickable(onClick = onClick!!)
+                        .padding(vertical = 4.dp)
+                } else {
+                    Modifier
+                }
+            ),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (onClick != null && label == "GPS位置") {
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = "位置图标",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
         Text(
             text = value,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface
+            color = if (hasClickAction) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            textDecoration = if (hasClickAction) {
+                TextDecoration.Underline
+            } else {
+                TextDecoration.None
+            }
         )
     }
 }
 
-@Composable
-private fun InfoItem(label: String, value: String) {
-    Column {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
-}
+
 
 private fun sharePhoto(context: Context, uri: Uri) {
     val shareIntent = AndroidIntent().apply {
@@ -1005,11 +1143,11 @@ private fun formatPhotoDate(context: Context, photo: Photo): String {
         // 首先尝试从EXIF数据中获取拍摄时间
         val inputStream = contentResolver.openInputStream(uri)
         inputStream?.use { stream ->
-            val exifInterface = android.media.ExifInterface(stream)
+            val exifInterface = ExifInterface(stream)
             // 按优先级检查不同的EXIF时间标签
-            val dateTime = exifInterface.getAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL) ?:
-                           exifInterface.getAttribute(android.media.ExifInterface.TAG_DATETIME_DIGITIZED) ?:
-                           exifInterface.getAttribute(android.media.ExifInterface.TAG_DATETIME)
+            val dateTime = exifInterface.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?:
+                           exifInterface.getAttribute(ExifInterface.TAG_DATETIME_DIGITIZED) ?:
+                           exifInterface.getAttribute(ExifInterface.TAG_DATETIME)
             
             if (!dateTime.isNullOrEmpty()) {
                 // 解析EXIF时间格式 "yyyy:MM:dd HH:mm:ss"

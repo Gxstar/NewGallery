@@ -26,6 +26,7 @@ import com.example.newgallery.ui.navigation.AppNavigation
 import com.example.newgallery.ui.navigation.BottomNavigationBar
 import com.example.newgallery.ui.navigation.Routes
 import com.example.newgallery.ui.theme.NewGalleryTheme
+import com.example.newgallery.utils.SettingsManager
 
 class MainActivity : ComponentActivity() {
     
@@ -83,6 +84,10 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 初始化设置管理器
+        SettingsManager.init(this)
+        
         enableEdgeToEdge()
         setContent {
             NewGalleryTheme {
