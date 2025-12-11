@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -38,9 +41,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.example.newgallery.data.model.Photo
 import com.example.newgallery.ui.theme.TextPrimary
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
@@ -51,6 +58,10 @@ import com.example.newgallery.MainActivity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent as AndroidIntent
+import android.graphics.Bitmap
+import android.media.ThumbnailUtils
+import android.os.Build
+import android.provider.MediaStore
 
 @Composable
 fun PhotoDetailScreen(
@@ -433,30 +444,133 @@ fun PhotoDetailItem(
     isFullScreen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var videoThumbnail by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var isLoadingThumbnail by remember { mutableStateOf(false) }
+    
+    // 如果是视频，生成缩略图
+    LaunchedEffect(photo.uri) {
+        if (photo.mimeType.startsWith("video/")) {
+            isLoadingThumbnail = true
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val thumbnail = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        // Android 10+ 使用新的API，从ContentResolver获取缩略图
+                        context.contentResolver.loadThumbnail(
+                            photo.uri,
+                            android.util.Size(512, 512),
+                            null
+                        )
+                    } else {
+                        // Android 9及以下使用旧的API
+                        @Suppress("DEPRECATION")
+                        android.media.ThumbnailUtils.createVideoThumbnail(
+                            photo.uri.toString(),
+                            android.provider.MediaStore.Images.Thumbnails.MINI_KIND
+                        )
+                    }
+                    videoThumbnail = thumbnail
+                } catch (e: Exception) {
+                    android.util.Log.e("PhotoDetailItem", "生成视频缩略图失败: ${e.message}")
+                    videoThumbnail = null
+                } finally {
+                    isLoadingThumbnail = false
+                }
+            }
+        }
+    }
+    
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(photo.uri)
-                .size(coil.size.Size.ORIGINAL) // 加载原始尺寸图片
-                .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
-                .diskCachePolicy(coil.request.CachePolicy.ENABLED)
-                .crossfade(false) // 禁用淡入动画，提高清晰度
-                .build(),
-            contentDescription = photo.displayName,
-            contentScale = if (isFullScreen) ContentScale.Fit else ContentScale.Fit,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    translationX = offsetX,
-                    translationY = offsetY,
-                    transformOrigin = TransformOrigin.Center
-                )
-        )
+        if (photo.mimeType.startsWith("video/")) {
+            // 视频文件：显示缩略图和播放按钮
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                // 显示视频缩略图
+                if (videoThumbnail != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = videoThumbnail!!.asImageBitmap(),
+                        contentDescription = photo.displayName,
+                        contentScale = if (isFullScreen) ContentScale.Fit else ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale,
+                                translationX = offsetX,
+                                translationY = offsetY,
+                                transformOrigin = TransformOrigin.Center
+                            )
+                    )
+                } else if (isLoadingThumbnail) {
+                    // 加载中显示进度条
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(48.dp)
+                    )
+                } else {
+                    // 缩略图加载失败，显示占位符
+                    androidx.compose.material3.Text(
+                        text = "视频",
+                        style = androidx.compose.material3.MaterialTheme.typography.headlineMedium
+                    )
+                }
+                
+                // 播放按钮
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f))
+                        .clickable {
+                            // 调用系统播放器播放视频
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                setDataAndType(photo.uri, photo.mimeType)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            try {
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                android.util.Log.e("PhotoDetailItem", "无法播放视频: ${e.message}")
+                                // 可以在这里添加Toast提示用户
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.PlayArrow,
+                        contentDescription = "播放视频",
+                        tint = androidx.compose.ui.graphics.Color.White,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+            }
+        } else {
+            // 图片文件：使用原来的逻辑
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(photo.uri)
+                    .size(coil.size.Size.ORIGINAL) // 加载原始尺寸图片
+                    .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                    .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                    .crossfade(false) // 禁用淡入动画，提高清晰度
+                    .build(),
+                contentDescription = photo.displayName,
+                contentScale = if (isFullScreen) ContentScale.Fit else ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offsetX,
+                        translationY = offsetY,
+                        transformOrigin = TransformOrigin.Center
+                    )
+            )
+        }
     }
 }
 
