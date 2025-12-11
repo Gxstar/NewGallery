@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -46,8 +44,6 @@ import androidx.compose.ui.draw.clip
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.example.newgallery.data.model.Photo
 import com.example.newgallery.ui.theme.TextPrimary
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
@@ -58,10 +54,6 @@ import com.example.newgallery.MainActivity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent as AndroidIntent
-import android.graphics.Bitmap
-import android.media.ThumbnailUtils
-import android.os.Build
-import android.provider.MediaStore
 
 @Composable
 fun PhotoDetailScreen(
@@ -437,12 +429,13 @@ fun PhotoDetailScreen(
 
 @Composable
 fun PhotoDetailItem(
+    modifier: Modifier = Modifier,
     photo: Photo,
     scale: Float = 1f,
     offsetX: Float = 0f,
     offsetY: Float = 0f,
-    isFullScreen: Boolean = false,
-    modifier: Modifier = Modifier
+    isFullScreen: Boolean = false
+
 ) {
     val context = LocalContext.current
     var videoThumbnail by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -454,21 +447,12 @@ fun PhotoDetailItem(
             isLoadingThumbnail = true
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    val thumbnail = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                        // Android 10+ 使用新的API，从ContentResolver获取缩略图
-                        context.contentResolver.loadThumbnail(
-                            photo.uri,
-                            android.util.Size(512, 512),
-                            null
-                        )
-                    } else {
-                        // Android 9及以下使用旧的API
-                        @Suppress("DEPRECATION")
-                        android.media.ThumbnailUtils.createVideoThumbnail(
-                            photo.uri.toString(),
-                            android.provider.MediaStore.Images.Thumbnails.MINI_KIND
-                        )
-                    }
+                    // API 30+ 直接使用ContentResolver.loadThumbnail
+                    val thumbnail = context.contentResolver.loadThumbnail(
+                        photo.uri,
+                        android.util.Size(512, 512),
+                        null
+                    )
                     videoThumbnail = thumbnail
                 } catch (e: Exception) {
                     android.util.Log.e("PhotoDetailItem", "生成视频缩略图失败: ${e.message}")
@@ -508,23 +492,23 @@ fun PhotoDetailItem(
                     )
                 } else if (isLoadingThumbnail) {
                     // 加载中显示进度条
-                    androidx.compose.material3.CircularProgressIndicator(
+                    CircularProgressIndicator(
                         modifier = Modifier.size(48.dp)
                     )
                 } else {
                     // 缩略图加载失败，显示占位符
-                    androidx.compose.material3.Text(
+                    Text(
                         text = "视频",
-                        style = androidx.compose.material3.MaterialTheme.typography.headlineMedium
+                        style = MaterialTheme.typography.headlineMedium
                     )
                 }
                 
                 // 播放按钮
-                androidx.compose.foundation.layout.Box(
+                Box(
                     modifier = Modifier
                         .size(80.dp)
                         .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f))
+                        .background(Color.Black.copy(alpha = 0.6f))
                         .clickable {
                             // 调用系统播放器播放视频
                             val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
@@ -541,9 +525,9 @@ fun PhotoDetailItem(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.PlayArrow,
+                        imageVector = Icons.Default.PlayArrow,
                         contentDescription = "播放视频",
-                        tint = androidx.compose.ui.graphics.Color.White,
+                        tint = Color.White,
                         modifier = Modifier.size(40.dp)
                     )
                 }
@@ -952,7 +936,7 @@ private fun InfoItem(label: String, value: String) {
     }
 }
 
-private fun sharePhoto(context: android.content.Context, uri: Uri) {
+private fun sharePhoto(context: Context, uri: Uri) {
     val shareIntent = AndroidIntent().apply {
         action = AndroidIntent.ACTION_SEND
         type = "image/*"
@@ -962,7 +946,7 @@ private fun sharePhoto(context: android.content.Context, uri: Uri) {
     context.startActivity(AndroidIntent.createChooser(shareIntent, "分享图片"))
 }
 
-private fun isPhotoFavorite(context: android.content.Context, uri: Uri): Boolean {
+private fun isPhotoFavorite(context: Context, uri: Uri): Boolean {
     return try {
         val contentResolver = context.contentResolver
         val cursor = contentResolver.query(
@@ -992,7 +976,7 @@ private fun isPhotoFavorite(context: android.content.Context, uri: Uri): Boolean
     }
 }
 
-private fun togglePhotoFavorite(context: android.content.Context, uri: Uri, isFavorite: Boolean): Boolean {
+private fun togglePhotoFavorite(context: Context, uri: Uri, isFavorite: Boolean): Boolean {
     return try {
         val contentResolver = context.contentResolver
         val values = android.content.ContentValues().apply {
@@ -1013,7 +997,7 @@ private fun togglePhotoFavorite(context: android.content.Context, uri: Uri, isFa
     }
 }
 
-private fun formatPhotoDate(context: android.content.Context, photo: com.example.newgallery.data.model.Photo): String {
+private fun formatPhotoDate(context: Context, photo: Photo): String {
     return try {
         val uri = photo.uri
         val contentResolver = context.contentResolver
@@ -1058,7 +1042,7 @@ private fun formatPhotoDate(context: android.content.Context, photo: com.example
         // 最后的备选方案：显示"未知时间"
         "未知时间"
         
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         // 出错时显示默认格式
         "未知时间"
     }
@@ -1067,7 +1051,7 @@ private fun formatPhotoDate(context: android.content.Context, photo: com.example
 /**
  * 使用MediaStore.createDeleteRequest删除照片 (Android 11+标准方法)
  */
-private fun deletePhoto(context: android.content.Context, photoUri: android.net.Uri, photoId: Long) {
+private fun deletePhoto(context: Context, photoUri: Uri, photoId: Long) {
     val mainActivity = context as? MainActivity
     if (mainActivity != null) {
         try {
