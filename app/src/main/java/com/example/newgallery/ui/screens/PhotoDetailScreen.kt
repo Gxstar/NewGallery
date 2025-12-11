@@ -36,7 +36,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -45,7 +44,6 @@ import coil.request.ImageRequest
 import com.example.newgallery.data.model.Photo
 import com.example.newgallery.ui.theme.TextPrimary
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
-import com.example.newgallery.ui.viewmodel.ScrollStateViewModel
 import com.example.newgallery.ui.viewmodel.ViewModelFactory
 import com.example.newgallery.utils.ExifInfoUtil
 import com.example.newgallery.MainActivity
@@ -53,7 +51,6 @@ import com.example.newgallery.MainActivity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent as AndroidIntent
-import android.content.IntentFilter
 
 @Composable
 fun PhotoDetailScreen(
@@ -69,12 +66,8 @@ fun PhotoDetailScreen(
     )
     val context = LocalContext.current
     val sharedViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(context))
-    val scrollStateViewModel: ScrollStateViewModel = viewModel(factory = ViewModelFactory(context))
     
     // API 30+ 删除媒体文件不需要特殊权限
-    
-    // State to track if we should show delete dialog after permission is granted
-    var pendingDelete by remember { mutableStateOf(false) }
     
     val allPhotos by sharedViewModel.allPhotos.collectAsState()
     

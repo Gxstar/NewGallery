@@ -1,11 +1,11 @@
 package com.example.newgallery.ui.screens
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent as AndroidIntent
 import android.content.IntentFilter
-import android.content.ContentUris
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Handler
@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 
 @OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("InlinedApi")
 @Composable
 fun PhotosScreen(
 onPhotoClick: (photo: com.example.newgallery.data.model.Photo, index: Int) -> Unit
@@ -56,24 +57,28 @@ val currentColumnCount = remember(gridScale) {
 (baseColumnCount * gridScale).toInt().coerceIn(minColumnCount, maxColumnCount)
 }
     
-    // 标准Android权限处理 - API 30+ 需要 READ_MEDIA_IMAGES 和 READ_MEDIA_VIDEO
+    // 标准Android权限处理 - 向后兼容不同API级别
     val permissionGranted = remember { mutableStateOf(false) }
     val showPermissionRationale = remember { mutableStateOf(false) }
     
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val imagesGranted = permissions[Manifest.permission.READ_MEDIA_IMAGES] ?: false
-        val videoGranted = permissions[Manifest.permission.READ_MEDIA_VIDEO] ?: false
-        val allGranted = imagesGranted && videoGranted
+        // 根据API级别检查不同的权限
+        val allGranted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            // API 33+ 使用新的权限
+            val imagesGranted = permissions[Manifest.permission.READ_MEDIA_IMAGES] ?: false
+            val videoGranted = permissions[Manifest.permission.READ_MEDIA_VIDEO] ?: false
+            imagesGranted && videoGranted
+        } else {
+            // API 30-32 使用旧的权限
+            val readGranted = permissions[Manifest.permission.READ_EXTERNAL_STORAGE] ?: false
+            readGranted
+        }
         
         permissionGranted.value = allGranted
-        if (!allGranted) {
-            // 检查是否需要显示权限说明
-            showPermissionRationale.value = true
-        } else {
-            showPermissionRationale.value = false
-        }
+        // 检查是否需要显示权限说明
+        showPermissionRationale.value = !allGranted
     }
     
     val context = LocalContext.current
@@ -171,14 +176,19 @@ val currentColumnCount = remember(gridScale) {
     val photosByDate by viewModel.photosByDate.collectAsState()
     val error by viewModel.error.collectAsState()
     
-    // 请求权限
+    // 请求权限 - 根据API级别请求不同的权限
     LaunchedEffect(Unit) {
-        permissionLauncher.launch(
+        val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            // API 33+ 使用新的权限
             arrayOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
                 Manifest.permission.READ_MEDIA_VIDEO
             )
-        )
+        } else {
+            // API 30-32 使用旧的权限
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        permissionLauncher.launch(permissions)
     }
     
     // 加载照片
@@ -188,8 +198,7 @@ val currentColumnCount = remember(gridScale) {
             sharedViewModel.loadAllPhotos()
         }
     }
-    
-    val allPhotos = photosByDate.values.flatten()
+
     
     Box(modifier = Modifier.fillMaxSize()) {
         if (permissionGranted.value) {
@@ -271,7 +280,7 @@ val currentColumnCount = remember(gridScale) {
                                     scrollStateViewModel.saveScrollState(lazyGridState)
                                     
                                     // 如果是视频，使用系统播放器播放
-                                    if (photo.mimeType?.startsWith("video/") == true) {
+                                    if (photo.mimeType.startsWith("video/")) {
                                         try {
                                             val intent: AndroidIntent = AndroidIntent(AndroidIntent.ACTION_VIEW).apply {
                                                 setDataAndType(photo.uri, photo.mimeType)
@@ -313,12 +322,17 @@ val currentColumnCount = remember(gridScale) {
                 }
                 Button(
                     onClick = {
-                        permissionLauncher.launch(
+                        val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            // API 33+ 使用新的权限
                             arrayOf(
                                 Manifest.permission.READ_MEDIA_IMAGES,
                                 Manifest.permission.READ_MEDIA_VIDEO
                             )
-                        )
+                        } else {
+                            // API 30-32 使用旧的权限
+                            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+                        }
+                        permissionLauncher.launch(permissions)
                     },
                     modifier = Modifier.padding(16.dp)
                 ) {

@@ -47,7 +47,7 @@ fun PhotoItem(
     
     // 如果是视频，生成缩略图
     LaunchedEffect(photo.uri) {
-        if (photo.mimeType?.startsWith("video/") == true) {
+        if (photo.mimeType.startsWith("video/")) {
             isLoadingThumbnail = true
             withContext(Dispatchers.IO) {
                 try {
@@ -92,7 +92,7 @@ fun PhotoItem(
             }
     ) {
         when {
-            photo.mimeType?.startsWith("video/") == true && isLoadingThumbnail -> {
+            photo.mimeType.startsWith("video/") && isLoadingThumbnail -> {
                 // 显示加载指示器
                 Box(
                     modifier = Modifier
@@ -106,7 +106,7 @@ fun PhotoItem(
                     )
                 }
             }
-            photo.mimeType?.startsWith("video/") == true && videoThumbnail != null -> {
+            photo.mimeType.startsWith("video/") && videoThumbnail != null -> {
                 // 显示视频缩略图
                 androidx.compose.foundation.Image(
                     bitmap = videoThumbnail!!.asImageBitmap(),
@@ -123,7 +123,7 @@ fun PhotoItem(
                         .crossfade(true)
                         .apply {
                             // 如果是视频且缩略图生成失败，尝试让Coil处理视频帧提取
-                            if (photo.mimeType?.startsWith("video/") == true) {
+                            if (photo.mimeType.startsWith("video/")) {
                                 // Coil会自动尝试提取视频的第一帧作为缩略图
                             }
                         }
@@ -136,7 +136,7 @@ fun PhotoItem(
         }
         
         // 如果是视频，显示播放图标
-        if (photo.mimeType?.startsWith("video/") == true) {
+        if (photo.mimeType.startsWith("video/")) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
