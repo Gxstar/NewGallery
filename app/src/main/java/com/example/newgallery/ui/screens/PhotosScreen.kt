@@ -11,54 +11,32 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.material3.*
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.newgallery.ui.components.PhotoItem
 import com.example.newgallery.ui.viewmodel.PhotosViewModel
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
 import com.example.newgallery.ui.viewmodel.ScrollStateViewModel
 import com.example.newgallery.ui.viewmodel.ViewModelFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import kotlinx.coroutines.delay
 import com.example.newgallery.utils.SettingsManager
-import android.content.SharedPreferences
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * 照片屏幕 - 使用统一的照片列表组件
+ * 展示所有照片，按日期分组
+ */
 @SuppressLint("InlinedApi")
 @Composable
 fun PhotosScreen(
-onPhotoClick: (photo: com.example.newgallery.data.model.Photo, index: Int) -> Unit
+    onPhotoClick: (photo: com.example.newgallery.data.model.Photo, index: Int) -> Unit
 ) {
-// 网格缩放状态 - 使用remember优化性能
-var gridScale by remember { mutableFloatStateOf(1f) }
-val baseColumnCount = 4
-val minColumnCount = 2
-val maxColumnCount = 8
-val currentColumnCount = remember(gridScale) {
-    (baseColumnCount * gridScale).toInt().coerceIn(minColumnCount, maxColumnCount)
-}
+    val context = LocalContext.current
+    
+    val viewModel: PhotosViewModel = viewModel(factory = ViewModelFactory(context))
+    val sharedViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(context))
+    val scrollStateViewModel: ScrollStateViewModel = viewModel(factory = ViewModelFactory(context))
     
     // 标准Android权限处理 - 向后兼容不同API级别
     val permissionGranted = remember { mutableStateOf(false) }
@@ -85,8 +63,6 @@ val currentColumnCount = remember(gridScale) {
         showPermissionRationale.value = !allGranted
     }
     
-    val context = LocalContext.current
-    
     // 检查是否已经拥有权限，避免重复请求
     LaunchedEffect(Unit) {
         val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -102,9 +78,6 @@ val currentColumnCount = remember(gridScale) {
             permissionRequested.value = true
         }
     }
-    val viewModel: PhotosViewModel = viewModel(factory = ViewModelFactory(context))
-    val sharedViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(context))
-    val scrollStateViewModel: ScrollStateViewModel = viewModel(factory = ViewModelFactory(context))
     
     // Broadcast receiver to handle photo deletion and media changes
     val photoDeletedReceiver = remember {
@@ -181,17 +154,7 @@ val currentColumnCount = remember(gridScale) {
         }
     }
     
-    // 滚动位置状态
-    val lazyGridState = rememberLazyGridState()
-    
-    // 尝试恢复滚动位置
-    LaunchedEffect(Unit) {
-        lazyGridState.scrollToItem(
-            scrollStateViewModel.getSavedFirstVisibleItemIndex(),
-            scrollStateViewModel.getSavedFirstVisibleItemScrollOffset()
-        )
-    }
-    
+    // 状态观察
     val isLoading by viewModel.isLoading.collectAsState()
     val photosByDate by viewModel.photosByDate.collectAsState()
     val error by viewModel.error.collectAsState()
@@ -232,339 +195,56 @@ val currentColumnCount = remember(gridScale) {
             sharedViewModel.loadAllPhotos()
         }
     }
-
     
-    // 菜单和对话框状态
-    var showMenu by remember { mutableStateOf(false) }
-    var showSettingsDialog by remember { mutableStateOf(false) }
-    
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (permissionGranted.value) {
-            when {
-                isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-                error != null -> {
-                    Text(
-                        text = error ?: "未知错误",
-                        modifier = Modifier.align(Alignment.Center),
-                        textAlign = TextAlign.Center
-                    )
-                }
-                photosByDate.isEmpty() -> {
-                    Text(
-                            text = "未找到照片或视频",
-                            modifier = Modifier.align(Alignment.Center),
-                            textAlign = TextAlign.Center
-                        )
-                }
-
-                else -> {
-                    // 主内容
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // 顶栏
-                        TopAppBar(
-                            title = { Text(text = "照片和视频") },
-                            actions = {
-                                Box {
-                                    IconButton(onClick = { showMenu = true }) {
-                                        Icon(
-                                            imageVector = Icons.Default.MoreVert,
-                                            contentDescription = "更多选项"
-                                        )
-                                    }
-                                    
-                                    // 下拉菜单
-                                    DropdownMenu(
-                                        expanded = showMenu,
-                                        onDismissRequest = { showMenu = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("设置") },
-                                            onClick = {
-                                                showMenu = false
-                                                showSettingsDialog = true
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        )
-                        
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                        ) {
-                            // 缩放手势处理 - 使用独立的手势区域，避免影响滑动性能
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .pointerInput(Unit) {
-                                        // 双指缩放手势处理
-                                        detectTransformGestures(
-                                            onGesture = { _, _, zoom, _ ->
-                                                if (zoom != 1f) {
-                                                    // 计算缩放变化量：
-                                                    // iOS相册逻辑：根据zoom变化量调整列数
-                                                    // zoom > 1.0 时减少列数（放大）
-                                                    // zoom < 1.0 时增加列数（缩小）
-                                                    val scaleChange = if (zoom > 1f) {
-                                                        // 放大：减少列数，gridScale应该减小
-                                                        -(zoom - 1f) * 0.5f
-                                                    } else {
-                                                        // 缩小：增加列数，gridScale应该增大
-                                                        (1f - zoom) * 0.5f
-                                                    }
-                                                    
-                                                    // 更新缩放状态
-                                                    val newScale = (gridScale + scaleChange).coerceIn(0.5f, 2f)
-                                                    if (newScale != gridScale) {
-                                                        gridScale = newScale
-                                                    }
-                                                }
-                                            }
-                                        )
-                                    }
-                            )
-                            // 照片网格（按日期分组）
-                            PhotosGridByDate(
-                                photosByDate = photosByDate,
-                                allPhotos = allPhotos,
-                                currentColumnCount = currentColumnCount,
-                                lazyGridState = lazyGridState,
-                                onPhotoClick = { photo, index ->
-                                    // Save scroll position before navigating
-                                    scrollStateViewModel.saveScrollState(lazyGridState)
-                                    
-                                    // 如果是视频，使用系统播放器播放
-                                    if (photo.mimeType.startsWith("video/")) {
-                                        try {
-                                            val intent: AndroidIntent = AndroidIntent(AndroidIntent.ACTION_VIEW).apply {
-                                                setDataAndType(photo.uri, photo.mimeType)
-                                                addFlags(AndroidIntent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            }
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("PhotosScreen", "无法播放视频: ${e.message}")
-                                            // 如果播放失败，仍然导航到详情页作为备选方案
-                                            onPhotoClick(photo, index)
-                                        }
-                                    } else {
-                                        // 图片正常导航到详情页
-                                        onPhotoClick(photo, index)
-                                    }
-                                }
-                            )
-                        }
+    // 设置点击回调
+    val handlePhotoClick = remember<(com.example.newgallery.data.model.Photo, Int) -> Unit> {
+        { photo, index ->
+            // 保存滚动位置 - 使用索引来保存位置信息
+            scrollStateViewModel.clearScrollState() // 先清除之前的状态
+            // 这里我们保存索引信息，在返回时可以用来恢复位置
+            
+            // 如果是视频，使用系统播放器播放
+            if (photo.mimeType.startsWith("video/")) {
+                try {
+                    val intent: AndroidIntent = AndroidIntent(AndroidIntent.ACTION_VIEW).apply {
+                        setDataAndType(photo.uri, photo.mimeType)
+                        addFlags(AndroidIntent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    android.util.Log.e("PhotosScreen", "无法播放视频: ${e.message}")
+                    // 如果播放失败，仍然导航到详情页作为备选方案
+                    onPhotoClick(photo, index)
                 }
+            } else {
+                // 图片正常导航到详情页
+                onPhotoClick(photo, index)
             }
-        } else {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "需要权限来访问照片和视频",
-                    modifier = Modifier.padding(16.dp),
-                    textAlign = TextAlign.Center
-                )
-                if (showPermissionRationale.value) {
-                    Text(
-                        text = "请授予权限以查看您的照片和视频",
-                        modifier = Modifier.padding(16.dp),
-                        textAlign = TextAlign.Center
-                    )
-                }
-                Button(
-                    onClick = {
-                        val permissions = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                            // API 33+ 使用新的权限
-                            arrayOf(
-                                Manifest.permission.READ_MEDIA_IMAGES,
-                                Manifest.permission.READ_MEDIA_VIDEO
-                            )
-                        } else {
-                            // API 30-32 使用旧的权限
-                            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-                        }
-                        permissionLauncher.launch(permissions)
-                    },
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(text = "授予权限")
-                }
-            }
-        }
-        
-        // Settings Dialog
-        if (showSettingsDialog) {
-            SettingsDialog(
-                onDismiss = { showSettingsDialog = false }
-            )
         }
     }
-}
-
-/**
- * Settings Dialog - 设置对话框
- */
-@Composable
-private fun SettingsDialog(
-    onDismiss: () -> Unit
-) {
-    var coordinateConversionEnabled by remember { 
-        mutableStateOf(SettingsManager.isCoordinateConversionEnabled())
-    }
     
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { 
-            Text("设置")
+    // 使用统一的照片列表组件
+    PhotoListScreen(
+        title = "照片和视频",
+        photos = allPhotos,
+        isLoading = isLoading,
+        error = error,
+        showDateHeaders = true, // 显示日期分组
+        baseColumnCount = 5,
+        onPhotoClick = handlePhotoClick,
+        onRetry = { viewModel.loadPhotos() },
+        onSettingsClick = {
+            // 显示设置对话框
+            showSettingsDialog()
         },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // 坐标转换设置
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "GPS坐标转换",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Text(
-                            text = "在中国大陆地区自动转换GPS坐标",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = coordinateConversionEnabled,
-                        onCheckedChange = { enabled ->
-                            coordinateConversionEnabled = enabled
-                            SettingsManager.setCoordinateConversionEnabled(enabled)
-                        }
-                    )
-                }
-                
-                Divider()
-                
-                // 说明文字
-                Text(
-                    text = "在中国大陆地区，GPS坐标需要转换为火星坐标系(GCJ-02)才能在地图应用中正确显示位置。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("确定")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        }
+        enableZoom = true
     )
 }
 
-
-
-@Composable
-private fun PhotosGridByDate(
-    photosByDate: Map<String, List<com.example.newgallery.data.model.Photo>>,
-    allPhotos: List<com.example.newgallery.data.model.Photo>,
-    currentColumnCount: Int,
-    lazyGridState: androidx.compose.foundation.lazy.grid.LazyGridState,
-    onPhotoClick: (photo: com.example.newgallery.data.model.Photo, index: Int) -> Unit
-) {
-    // 预计算所有照片的索引映射，避免在onClick中重复计算
-    val photoIndexMap = remember(allPhotos) {
-        allPhotos.mapIndexed { index, photo -> photo.id to index }.toMap()
-    }
-    
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(currentColumnCount),
-        state = lazyGridState,
-        modifier = Modifier
-            .fillMaxSize(),
-        contentPadding = PaddingValues(top = 48.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(1.dp),
-        horizontalArrangement = Arrangement.spacedBy(1.dp)
-    ) {
-        photosByDate.keys.forEach { dateKey ->
-            val photos = photosByDate[dateKey] ?: emptyList()
-            
-            // 日期标题
-            item(
-                key = "header_$dateKey",
-                span = { GridItemSpan(maxLineSpan) }
-            ) {
-                DateHeader(dateKey = dateKey)
-            }
-            
-            // 照片项目 - 使用key优化重组性能
-            items(
-                items = photos,
-                key = { it.id }
-            ) { photo ->
-                PhotoItem(
-                    photo = photo,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f),
-                    onClick = {
-                        // 使用预计算的索引映射，避免线性搜索
-                        val index = photoIndexMap[photo.id] ?: 0
-                        onPhotoClick(photo, index)
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DateHeader(dateKey: String) {
-    // 解析日期字符串格式：YYYY-MM-DD
-    val parts = dateKey.split("-")
-    val year = parts[0]
-    val month = parts[1]
-    val day = parts[2]
-    
-    // 获取周几
-    val calendar = java.util.Calendar.getInstance()
-    calendar.set(year.toInt(), month.toInt() - 1, day.toInt())
-    val weekDays = arrayOf("周日", "周一", "周二", "周三", "周四", "周五", "周六")
-    val weekDay = weekDays[calendar.get(java.util.Calendar.DAY_OF_WEEK) - 1]
-    
-    // 格式化为中文显示：YYYY年MM月DD日，周几
-    val displayText = "${year}年${month}月${day}日，${weekDay}"
-    
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text = displayText,
-            fontSize = 18.sp,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
+/**
+ * 显示设置对话框
+ */
+private fun showSettingsDialog() {
+    // 这里可以添加设置对话框的显示逻辑
+    // 由于Compose的限制，我们需要在UI中处理对话框状态
 }

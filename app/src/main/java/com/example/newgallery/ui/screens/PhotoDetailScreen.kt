@@ -72,9 +72,12 @@ import android.util.Log
 @Composable
 fun PhotoDetailScreen(
     photoId: Long,
-    initialIndex: Int = 0,
+    initialIndex: Int,
+    fromAlbum: Boolean,
     onBackClick: () -> Unit
 ) {
+    Log.d("PhotoDetailScreen", "初始化PhotoDetailScreen: photoId=$photoId, initialIndex=$initialIndex, fromAlbum=$fromAlbum")
+    
     var shouldExit by remember { mutableStateOf(false) }
     val exitAlpha by animateFloatAsState(
         targetValue = if (shouldExit) 0f else 1f,
@@ -88,17 +91,77 @@ fun PhotoDetailScreen(
     
     val allPhotos by sharedViewModel.allPhotos.collectAsState()
     
-    // Load photos if not already loaded
+    // 记录SharedPhotoViewModel的当前状态
+    Log.d("PhotoDetailScreen", "SharedPhotoViewModel.allPhotos大小: ${allPhotos.size}")
+    if (allPhotos.isNotEmpty()) {
+        Log.d("PhotoDetailScreen", "SharedPhotoViewModel照片列表: ${allPhotos.map { it.id }}")
+    }
+    
+    // Only load all photos if we don't have the specific photo we're looking for
+    // When fromAlbum is true, we assume the current photos list is already set correctly
     LaunchedEffect(Unit) {
-        if (allPhotos.isEmpty()) {
-            sharedViewModel.loadAllPhotos()
+        if (!fromAlbum) {
+            val hasSpecificPhoto = allPhotos.any { it.id == photoId }
+            if (allPhotos.isEmpty() || !hasSpecificPhoto) {
+                // If we don't have the photo in current list, load all photos
+                // This handles cases where we navigate directly to photo detail
+                sharedViewModel.loadAllPhotos()
+            }
+        } else {
+            // When fromAlbum is true, wait for the album photos to be set
+            // Check multiple times with increasing delays
+            var attempts = 0
+            val maxAttempts = 10
+            while (attempts < maxAttempts && allPhotos.isEmpty()) {
+                attempts++
+                Log.d("PhotoDetailScreen", "等待照片数据加载，尝试 $attempts/${maxAttempts}")
+                kotlinx.coroutines.delay(200) // 200ms delay between attempts
+            }
+            Log.d("PhotoDetailScreen", "最终照片列表大小: ${allPhotos.size}")
+            if (allPhotos.isEmpty()) {
+                Log.e("PhotoDetailScreen", "照片列表仍然为空，显示错误状态")
+            }
         }
     }
     
+    // Use the current photos list from sharedViewModel (which could be album-specific or all photos)
+    // When fromAlbum is true, we use the photos that were set by the album detail screen
+    // When fromAlbum is false, we use all photos (either already loaded or will be loaded)
     val photos = allPhotos
-    val initialPhotoIndex = remember(photos) {
-        photos.indexOfFirst { it.id == photoId }.takeIf { it != -1 } ?: initialIndex
+    
+    // 添加一个状态来跟踪是否正在等待照片数据
+    var isWaitingForPhotos by remember { mutableStateOf(fromAlbum && photos.isEmpty()) }
+    
+    // 监听allPhotos的变化，当照片数据到达时更新等待状态
+    LaunchedEffect(allPhotos) {
+        Log.d("PhotoDetailScreen", "allPhotos更新: size=${allPhotos.size}, isWaitingForPhotos=$isWaitingForPhotos, fromAlbum=$fromAlbum")
+        if (allPhotos.isNotEmpty() && isWaitingForPhotos) {
+            Log.d("PhotoDetailScreen", "照片数据已到达，停止等待")
+            isWaitingForPhotos = false
+        }
     }
+    
+    // 当fromAlbum为true时，确保等待SharedPhotoViewModel中的数据
+    LaunchedEffect(fromAlbum) {
+        if (fromAlbum && photos.isEmpty()) {
+            Log.d("PhotoDetailScreen", "fromAlbum=true且照片为空，开始等待SharedPhotoViewModel数据")
+            isWaitingForPhotos = true
+        }
+    }
+    
+    Log.d("PhotoDetailScreen", "fromAlbum: $fromAlbum, photoId: $photoId, initialIndex: $initialIndex")
+    Log.d("PhotoDetailScreen", "照片列表大小: ${photos.size}, 是否等待中: $isWaitingForPhotos")
+    if (photos.isNotEmpty()) {
+        Log.d("PhotoDetailScreen", "第一张照片ID: ${photos[0].id}, 最后一张照片ID: ${photos[photos.size-1].id}")
+        isWaitingForPhotos = false // 一旦有了照片，就不再等待
+    }
+    
+    val initialPhotoIndex = remember(photos) {
+        val index = photos.indexOfFirst { it.id == photoId }
+        Log.d("PhotoDetailScreen", "查找照片ID $photoId 的索引: $index")
+        if (index != -1) index else initialIndex
+    }
+    
     val pagerState = rememberPagerState(
         initialPage = initialPhotoIndex,
         pageCount = { photos.size }
@@ -189,13 +252,59 @@ fun PhotoDetailScreen(
             .background(if (isUIVisible) MaterialTheme.colorScheme.background else Color.Black)
             .graphicsLayer(alpha = exitAlpha)
     ) {
-        if (photos.isEmpty()) {
-            // Loading state
+        if (photos.isEmpty() && !isWaitingForPhotos) {
+            // 只有当确定没有照片且不再等待时才显示错误
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "加载中...")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (fromAlbum) {
+                        // When from album and no photos, show error message
+                        Text(
+                            text = "无法加载相册照片",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "照片列表为空",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        androidx.compose.material3.Button(
+                            onClick = onBackClick
+                        ) {
+                            Text("返回")
+                        }
+                    } else {
+                        // Normal loading state
+                        Text(text = "加载中...")
+                    }
+                }
+            }
+        } else if (photos.isEmpty() && isWaitingForPhotos) {
+            // 正在等待照片数据加载
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "正在加载照片...",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         } else {
             // 顶部栏区域 (固定高度)

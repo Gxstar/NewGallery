@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
                     // Main content - no bottom padding since navigation is floating
                     AppNavigation(
                         navController = navController,
-                        modifier = Modifier.fillMaxSize()
+                        sharedPhotoViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = com.example.newgallery.ui.viewmodel.ViewModelFactory(this@MainActivity))
                     )
                     
                     // Floating pill navigation at the bottom - only show on grid screens

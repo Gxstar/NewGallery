@@ -295,9 +295,11 @@ class PhotoRepository(private val context: Context) {
      * Get photos from a specific album
      */
     suspend fun getPhotosByAlbum(albumId: String): List<Photo> = withContext(Dispatchers.IO) {
+        android.util.Log.d("PhotoRepository", "开始加载相册照片，albumId: $albumId")
         val photos = mutableListOf<Photo>()
-        
-        val projection = arrayOf(
+
+        // 查询图片
+        val imageProjection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.MIME_TYPE,
@@ -309,18 +311,21 @@ class PhotoRepository(private val context: Context) {
             MediaStore.Images.Media.BUCKET_ID,
             MediaStore.Images.Media.BUCKET_DISPLAY_NAME
         )
-        
+
         val selection = "${MediaStore.Images.Media.BUCKET_ID} = ?"
         val selectionArgs = arrayOf(albumId)
         val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
         
+        android.util.Log.d("PhotoRepository", "查询条件: $selection, 参数: ${selectionArgs.joinToString()}")
+        
         context.contentResolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
+            imageProjection,
             selection,
             selectionArgs,
             sortOrder
         )?.use { cursor ->
+            android.util.Log.d("PhotoRepository", "图片查询返回了 ${cursor.count} 条记录")
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
             val mimeTypeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
@@ -365,8 +370,82 @@ class PhotoRepository(private val context: Context) {
                     )
                 )
             }
+            android.util.Log.d("PhotoRepository", "添加了 ${cursor.count} 张图片")
         }
         
+        // 查询视频
+        val videoProjection = arrayOf(
+            MediaStore.Video.Media._ID,
+            MediaStore.Video.Media.DISPLAY_NAME,
+            MediaStore.Video.Media.MIME_TYPE,
+            MediaStore.Video.Media.DATE_TAKEN,
+            MediaStore.Video.Media.DATE_MODIFIED,
+            MediaStore.Video.Media.WIDTH,
+            MediaStore.Video.Media.HEIGHT,
+            MediaStore.Video.Media.SIZE,
+            MediaStore.Video.Media.BUCKET_ID,
+            MediaStore.Video.Media.BUCKET_DISPLAY_NAME
+        )
+        
+        context.contentResolver.query(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            videoProjection,
+            selection,
+            selectionArgs,
+            sortOrder
+        )?.use { cursor ->
+            android.util.Log.d("PhotoRepository", "视频查询返回了 ${cursor.count} 条记录")
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+            val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            val mimeTypeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
+            val dateTakenColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_TAKEN)
+            val dateModifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
+            val widthColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
+            val heightColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
+            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
+            val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID)
+            val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+            
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val displayName = cursor.getString(displayNameColumn)
+                val mimeType = cursor.getString(mimeTypeColumn)
+                val dateTaken = Date(cursor.getLong(dateTakenColumn))
+                val dateModified = Date(cursor.getLong(dateModifiedColumn) * 1000) // Convert seconds to milliseconds
+                val width = cursor.getInt(widthColumn)
+                val height = cursor.getInt(heightColumn)
+                val size = cursor.getLong(sizeColumn)
+                val bucketId = cursor.getString(bucketIdColumn)
+                val bucketName = cursor.getString(bucketNameColumn)
+                
+                val uri = Uri.withAppendedPath(
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    id.toString()
+                )
+                
+                photos.add(
+                    Photo(
+                        id = id,
+                        uri = uri,
+                        displayName = displayName,
+                        mimeType = mimeType,
+                        dateTaken = dateTaken,
+                        dateModified = dateModified,
+                        width = width,
+                        height = height,
+                        size = size,
+                        bucketId = bucketId,
+                        bucketName = bucketName
+                    )
+                )
+            }
+            android.util.Log.d("PhotoRepository", "添加了 ${cursor.count} 个视频")
+        }
+        
+        // 按日期排序（最新的在前）
+        photos.sortByDescending { it.dateTaken }
+        
+        android.util.Log.d("PhotoRepository", "相册加载完成，共 ${photos.size} 张照片")
         photos
     }
 }

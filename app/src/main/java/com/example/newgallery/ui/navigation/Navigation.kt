@@ -81,20 +81,26 @@ fun AppNavigation(
         }
         // Photo detail route with photo ID and index arguments
         composable(
-            route = "${Routes.PHOTO_DETAIL}/{photoId}/{index}",
+            route = "${Routes.PHOTO_DETAIL}/{photoId}/{index}?fromAlbum={fromAlbum}",
             arguments = listOf(
                 navArgument("photoId") { type = NavType.LongType },
-                navArgument("index") { type = NavType.IntType }
+                navArgument("index") { type = NavType.IntType },
+                navArgument("fromAlbum") { 
+                    type = NavType.BoolType
+                    defaultValue = false 
+                }
             )
         ) { backStackEntry ->
             val photoId = backStackEntry.arguments?.getLong("photoId") ?: 0L
             val index = backStackEntry.arguments?.getInt("index") ?: 0
+            val fromAlbum = backStackEntry.arguments?.getBoolean("fromAlbum") ?: false
             
             // For now, we'll create a simple photo detail screen
             // In a real app, you'd want to get the photo from a shared ViewModel or repository
             PhotoDetailScreen(
                 photoId = photoId,
                 initialIndex = index,
+                fromAlbum = fromAlbum,
                 onBackClick = { 
                     // Clear scroll state when going back
                     navController.popBackStack() 

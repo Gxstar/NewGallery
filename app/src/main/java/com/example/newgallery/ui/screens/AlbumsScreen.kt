@@ -1,20 +1,10 @@
 package com.example.newgallery.ui.screens
 
-import android.Manifest
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,42 +21,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.newgallery.ui.components.*
 import com.example.newgallery.ui.theme.TextSecondary
 import com.example.newgallery.ui.viewmodel.AlbumsViewModel
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
 import com.example.newgallery.ui.viewmodel.ViewModelFactory
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumsScreen(
     onAlbumClick: (album: com.example.newgallery.data.model.Album) -> Unit
 ) {
-    // 标准Android权限处理 - API 30+ 只需要 READ_MEDIA_IMAGES
-    val permissionGranted = remember { mutableStateOf(false) }
-    val showPermissionRationale = remember { mutableStateOf(false) }
-    
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        permissionGranted.value = isGranted
-        if (!isGranted) {
-            // 检查是否需要显示权限说明
-            showPermissionRationale.value = true
-        } else {
-            showPermissionRationale.value = false
-        }
-    }
-    
     val context = LocalContext.current
     val viewModel: AlbumsViewModel = viewModel(factory = ViewModelFactory(context))
     val sharedViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(context))
@@ -75,17 +45,17 @@ fun AlbumsScreen(
     val albums by viewModel.albums.collectAsState()
     val error by viewModel.error.collectAsState()
     
-    // 请求权限当屏幕首次加载时
-    LaunchedEffect(Unit) {
-        permissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
-    }
-    
-    // 当权限被授予时加载相册
-    LaunchedEffect(permissionGranted.value) {
-        if (permissionGranted.value) {
+    // 使用通用权限处理
+    val permissionState = rememberPermissionState { isGranted ->
+        if (isGranted) {
             viewModel.loadAlbums()
             sharedViewModel.loadAllPhotos()
         }
+    }
+    
+    // 请求权限当屏幕首次加载时
+    LaunchedEffect(Unit) {
+        permissionState.requestPermission()
     }
     
     Column(modifier = Modifier.fillMaxSize()) {
@@ -102,73 +72,53 @@ fun AlbumsScreen(
             }
         )
         
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (permissionGranted.value) {
-                // 权限已授予时显示相册
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                } else if (error != null) {
-                    Text(
-                        text = error ?: "未知错误",
-                        modifier = Modifier.align(Alignment.Center),
-                        textAlign = TextAlign.Center
-                    )
-                } else if (albums.isEmpty()) {
-                    Text(
-                        text = "未找到相册",
-                        modifier = Modifier.align(Alignment.Center),
-                        textAlign = TextAlign.Center
-                    )
-                } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(8.dp)
-                    ) {
-                        items(albums) { album ->
-                            AlbumItem(
-                                album = album,
-                                onClick = { 
-                                    // 导航到相册照片
-                                    onAlbumClick(album)
-                                }
-                            )
-                        }
-                    }
-                }
-            } else {
-                // 权限未授予时显示权限请求UI
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "需要权限来访问相册",
-                        modifier = Modifier.padding(16.dp),
-                        textAlign = TextAlign.Center
-                    )
-                    if (showPermissionRationale.value) {
-                        Text(
-                            text = "请授予权限以查看您的相册",
-                            modifier = Modifier.padding(16.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    Button(
-                        onClick = {
-                            permissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
-                        },
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(text = "授予权限")
-                    }
-                }
+        // 根据权限和状态显示不同内容
+        when {
+            !permissionState.isGranted -> {
+                PermissionDeniedState(
+                    showRationale = permissionState.showRationale,
+                    onRequestPermission = { permissionState.requestPermission() }
+                )
             }
+            isLoading -> {
+                LoadingState()
+            }
+            error != null -> {
+                ErrorState(
+                    message = error ?: "未知错误",
+                    onRetry = { viewModel.loadAlbums() }
+                )
+            }
+            albums.isEmpty() -> {
+                EmptyState(message = "未找到相册")
+            }
+            else -> {
+                AlbumsGrid(
+                    albums = albums,
+                    onAlbumClick = onAlbumClick
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlbumsGrid(
+    albums: List<com.example.newgallery.data.model.Album>,
+    onAlbumClick: (com.example.newgallery.data.model.Album) -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(8.dp)
+    ) {
+        items(albums) { album ->
+            AlbumItem(
+                album = album,
+                onClick = { onAlbumClick(album) }
+            )
         }
     }
 }

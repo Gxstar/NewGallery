@@ -81,6 +81,21 @@ class SharedPhotoViewModel(
     }
     
     /**
+     * Set current photos list and optionally set a specific photo as current
+     */
+    fun setCurrentPhotos(photos: List<Photo>, currentIndex: Int = 0) {
+        android.util.Log.d("SharedPhotoViewModel", "设置照片列表: ${photos.size}张照片，当前索引: $currentIndex")
+        if (currentIndex >= 0 && currentIndex < photos.size) {
+            android.util.Log.d("SharedPhotoViewModel", "当前照片: ${photos[currentIndex].id} - ${photos[currentIndex].displayName}")
+        }
+        _allPhotos.value = photos.toList() // 创建新列表确保触发状态更新
+        if (currentIndex >= 0 && currentIndex < photos.size) {
+            _currentPhoto.value = photos[currentIndex]
+        }
+        android.util.Log.d("SharedPhotoViewModel", "allPhotos已更新，新大小: ${_allPhotos.value.size}")
+    }
+    
+    /**
      * Get photo at specific index
      */
     fun getPhotoAtIndex(index: Int): Photo? {
