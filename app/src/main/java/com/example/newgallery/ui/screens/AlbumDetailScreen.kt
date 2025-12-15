@@ -1,73 +1,120 @@
 package com.example.newgallery.ui.screens
 
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import android.util.Log
-import com.example.newgallery.ui.viewmodel.*
+import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
+import com.example.newgallery.ui.viewmodel.ViewModelFactory
+import com.example.newgallery.ui.components.PhotoGrid
 
 /**
- * 相册详情页面 - 使用统一的照片列表组件
- * 显示特定相册内的照片
+ * 相册详情页面 - 显示特定相册内的照片
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumDetailScreen(
     albumId: String,
     albumName: String,
     navController: NavController,
-    sharedPhotoViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(LocalContext.current))
+    sharedPhotoViewModel: SharedPhotoViewModel
 ) {
-    val context = LocalContext.current
-    val albumDetailViewModel: AlbumDetailViewModel = viewModel(factory = ViewModelFactory(context, albumId))
-    
     // 获取相册照片
-    val photos by albumDetailViewModel.photos.collectAsState()
-    val isLoading by albumDetailViewModel.isLoading.collectAsState()
-    val error by albumDetailViewModel.error.collectAsState()
+    val photos by sharedPhotoViewModel.albumPhotos.collectAsState()
+    val isLoading by sharedPhotoViewModel.isLoading.collectAsState()
+    val error by sharedPhotoViewModel.error.collectAsState()
     
-    // 初始化日志
-    LaunchedEffect(Unit) {
-        Log.d("AlbumDetailScreen", "初始化AlbumDetailScreen: albumId=$albumId, albumName=$albumName")
-    }
-    
-    // 当日志显示照片数据变化
-    LaunchedEffect(photos) {
-        Log.d("AlbumDetailScreen", "照片列表状态更新: size=${photos.size}, isLoading=$isLoading, error=$error")
-        if (photos.isNotEmpty()) {
-            Log.d("AlbumDetailScreen", "照片列表已加载完成，可以点击查看")
-        }
+    // 加载相册照片
+    LaunchedEffect(albumId) {
+        sharedPhotoViewModel.loadAlbumPhotos(albumId)
     }
     
     val handlePhotoClick: (com.example.newgallery.data.model.Photo, Int) -> Unit = { photo, index ->
-        Log.d("AlbumDetailScreen", "点击照片: ${photo.id}，索引: $index，照片列表大小: ${photos.size}")
-        
-        if (photos.isNotEmpty()) {
-            Log.d("AlbumDetailScreen", "照片列表不为空，可以设置")
-            Log.d("AlbumDetailScreen", "设置SharedPhotoViewModel前的照片列表: ${photos.map { it.id }}")
-            sharedPhotoViewModel.setCurrentPhotos(photos, index)
-            Log.d("AlbumDetailScreen", "导航到photo_detail: photoId=${photo.id}, index=$index, fromAlbum=true")
-            navController.currentBackStackEntry?.savedStateHandle?.set("photo_id", photo.id)
-            navController.currentBackStackEntry?.savedStateHandle?.set("initial_index", index)
-            navController.currentBackStackEntry?.savedStateHandle?.set("from_album", true)
-            navController.navigate("photo_detail")
-        } else {
-            Log.e("AlbumDetailScreen", "照片列表为空，无法设置")
-        }
+        sharedPhotoViewModel.setCurrentPhotos(photos, index)
+        navController.currentBackStackEntry?.savedStateHandle?.set("photo_id", photo.id)
+        navController.currentBackStackEntry?.savedStateHandle?.set("initial_index", index)
+        navController.currentBackStackEntry?.savedStateHandle?.set("from_album", true)
+        navController.navigate("photo_detail")
     }
     
-    // 使用统一的照片列表组件
-    PhotoListScreen(
-        title = albumName,
-        photos = photos,
-        isLoading = isLoading,
-        error = error,
-        showDateHeaders = false, // 相册详情不显示日期分组
-        baseColumnCount = 4,
-        onPhotoClick = handlePhotoClick,
-        onRetry = { albumDetailViewModel.loadPhotos() },
-        onBackClick = { navController.navigateUp() },
-        showActions = true,
-        enableZoom = true
-    )
+    // 直接使用PhotoGrid组件，不再依赖PhotoListScreen
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(text = albumName) },
+                navigationIcon = {
+                    IconButton(onClick = { navController.navigateUp() }) {
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    Text(
+                        text = "${photos.size} 张照片",
+                        modifier = Modifier.padding(end = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            )
+        }
+    ) {
+        // 使用Flow监听收藏状态
+        val favoritePhotoIds by sharedPhotoViewModel.favoritePhotoIds.collectAsState(initial = emptyList())
+        
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(it)
+        ) {
+            when {
+                isLoading -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                error != null -> {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = error ?: "",
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { sharedPhotoViewModel.loadAlbumPhotos(albumId) }) {
+                            Text("重试")
+                        }
+                    }
+                }
+                photos.isEmpty() -> {
+                    Text(
+                        text = "此相册中没有照片",
+                        modifier = Modifier.align(Alignment.Center),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                else -> {
+                    // 照片网格
+                    PhotoGrid(
+                        photos = photos,
+                        columnCount = 4,
+                        showDateHeaders = false,
+                        onPhotoClick = handlePhotoClick,
+                        modifier = Modifier.fillMaxSize(),
+                        enableZoom = true,
+                        favoritePhotoIds = favoritePhotoIds
+                    )
+                }
+            }
+        }
+    }
 }

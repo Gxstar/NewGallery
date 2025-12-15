@@ -7,37 +7,35 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import androidx.compose.ui.layout.ContentScale
 import com.example.newgallery.data.model.Photo
 import android.graphics.Bitmap
 import android.media.ThumbnailUtils
+import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
 fun PhotoItem(
     photo: Photo,
+    isFavorite: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -152,6 +150,64 @@ fun PhotoItem(
                     modifier = Modifier.size(24.dp)
                 )
             }
+        }
+        
+        // 如果照片被收藏，显示小红心图标
+        if (isFavorite) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(20.dp)
+                    .background(Color.Black.copy(alpha = 0.3f), shape = CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = "已收藏",
+                    tint = Color.Red,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 检查照片是否被收藏
+ */
+private suspend fun checkIsFavorite(context: android.content.Context, uri: Uri): Boolean {
+    return withContext(Dispatchers.IO) {
+        try {
+            // 仅在API 29+支持收藏功能
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                return@withContext false
+            }
+            
+            val contentResolver = context.contentResolver
+            val projection = arrayOf(
+                MediaStore.MediaColumns.IS_FAVORITE
+            )
+            
+            contentResolver.query(
+                uri,
+                projection,
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val favoriteIndex = cursor.getColumnIndex(MediaStore.MediaColumns.IS_FAVORITE)
+                    if (favoriteIndex >= 0) {
+                        val favoriteValue = cursor.getInt(favoriteIndex)
+                        return@withContext favoriteValue == 1
+                    }
+                }
+            }
+            false
+        } catch (e: Exception) {
+            android.util.Log.e("PhotoItem", "Error checking favorite status", e)
+            false
         }
     }
 }

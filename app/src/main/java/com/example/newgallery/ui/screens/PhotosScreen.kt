@@ -2,41 +2,37 @@ package com.example.newgallery.ui.screens
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent as AndroidIntent
-import android.content.IntentFilter
-import android.database.ContentObserver
-import android.net.Uri
-import android.os.Handler
-import android.os.Looper
-import android.provider.MediaStore
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.newgallery.ui.viewmodel.PhotosViewModel
 import com.example.newgallery.ui.viewmodel.SharedPhotoViewModel
-import com.example.newgallery.ui.viewmodel.ScrollStateViewModel
 import com.example.newgallery.ui.viewmodel.ViewModelFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.delay
-import com.example.newgallery.utils.SettingsManager
+import com.example.newgallery.ui.components.PhotoGrid
 
 /**
- * 照片屏幕 - 使用统一的照片列表组件
- * 展示所有照片，按日期分组
+ * 照片屏幕 - 展示所有照片，按日期分组
  */
 @SuppressLint("InlinedApi")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotosScreen(
-    onPhotoClick: (photo: com.example.newgallery.data.model.Photo, index: Int) -> Unit
+    onPhotoClick: (photo: com.example.newgallery.data.model.Photo, index: Int) -> Unit,
+    sharedPhotoViewModel: SharedPhotoViewModel
 ) {
     val context = LocalContext.current
     
-    val viewModel: PhotosViewModel = viewModel(factory = ViewModelFactory(context))
-    val sharedViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(context))
-    val scrollStateViewModel: ScrollStateViewModel = viewModel(factory = ViewModelFactory(context))
+    // 使用共享的ViewModel实例
     
     // 标准Android权限处理 - 向后兼容不同API级别
     val permissionGranted = remember { mutableStateOf(false) }
@@ -79,85 +75,10 @@ fun PhotosScreen(
         }
     }
     
-    // Broadcast receiver to handle photo deletion and media changes
-    val photoDeletedReceiver = remember {
-        object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: AndroidIntent?) {
-                when (intent?.action) {
-                    "com.example.newgallery.PHOTO_DELETED" -> {
-                        // Get the deleted photo ID if available
-                        val deletedPhotoId = intent.getLongExtra("deleted_photo_id", -1)
-                        if (deletedPhotoId != -1L) {
-                            // Remove specific photo from shared view model
-                            sharedViewModel.removePhoto(deletedPhotoId)
-                        } else {
-                            // Fallback: reload all photos
-                            sharedViewModel.loadAllPhotos()
-                        }
-                        // Refresh current view model
-                        viewModel.loadPhotos()
-                    }
-                    "com.example.newgallery.MEDIA_CHANGED" -> {
-                        // 重新加载照片数据
-                        sharedViewModel.loadAllPhotos()
-                        viewModel.loadPhotos()
-                    }
-                }
-            }
-        }
-    }
-    
-    // Content observer to monitor media store changes
-    val mediaStoreObserver = remember {
-        object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean, uri: Uri?) {
-                android.util.Log.d("PhotosScreen", "Media store changed, URI: $uri, selfChange: $selfChange")
-                // 延迟一点时间避免频繁刷新
-                Handler(Looper.getMainLooper()).postDelayed({
-                    android.util.Log.d("PhotosScreen", "Refreshing photos after media store change")
-                    // 重新加载照片数据
-                    sharedViewModel.loadAllPhotos()
-                    viewModel.loadPhotos()
-                }, 500) // 延迟500ms
-            }
-        }
-    }
-    
-    // Register and unregister the broadcast receiver and content observer
-    DisposableEffect(context) {
-        // Register broadcast receiver for deletion and media change events
-        val filter = IntentFilter().apply {
-            addAction("com.example.newgallery.PHOTO_DELETED")
-            addAction("com.example.newgallery.MEDIA_CHANGED")
-        }
-        
-        // API 30+ 使用RECEIVER_EXPORTED
-        context.registerReceiver(photoDeletedReceiver, filter, Context.RECEIVER_EXPORTED)
-        
-        // Register content observer for media store changes
-        context.contentResolver.registerContentObserver(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            true,
-            mediaStoreObserver
-        )
-        
-        // 同时注册视频内容观察者
-        context.contentResolver.registerContentObserver(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            true,
-            mediaStoreObserver
-        )
-        
-        onDispose {
-            context.unregisterReceiver(photoDeletedReceiver)
-            context.contentResolver.unregisterContentObserver(mediaStoreObserver)
-        }
-    }
-    
-    // 状态观察
-    val isLoading by viewModel.isLoading.collectAsState()
-    val photosByDate by viewModel.photosByDate.collectAsState()
-    val error by viewModel.error.collectAsState()
+    // 状态观察 - 从SharedPhotoViewModel获取
+    val isLoading by sharedPhotoViewModel.isLoading.collectAsState()
+    val photosByDate by sharedPhotoViewModel.photosByDate.collectAsState()
+    val error by sharedPhotoViewModel.error.collectAsState()
     
     // 预计算照片数据，避免重复计算
     val allPhotos = remember(photosByDate) {
@@ -188,27 +109,26 @@ fun PhotosScreen(
     // 加载照片 - 优化加载顺序避免资源竞争
     LaunchedEffect(permissionGranted.value) {
         if (permissionGranted.value) {
-            // 先加载主视图数据，再加载共享数据
-            viewModel.loadPhotos()
+            // 使用合并后的ViewModel方法
+            sharedPhotoViewModel.loadPhotosByDate()
             // 延迟一小段时间再加载共享数据，避免同时大量IO操作
             delay(100)
-            sharedViewModel.loadAllPhotos()
+            sharedPhotoViewModel.loadAllPhotos()
         }
     }
     
     // 设置点击回调
     val handlePhotoClick = remember<(com.example.newgallery.data.model.Photo, Int) -> Unit> {
         { photo, index ->
-            // 保存滚动位置 - 使用索引来保存位置信息
-            scrollStateViewModel.clearScrollState() // 先清除之前的状态
-            // 这里我们保存索引信息，在返回时可以用来恢复位置
+            // 保存滚动位置 - 使用合并后的ViewModel方法
+            sharedPhotoViewModel.clearScrollState() // 先清除之前的状态
             
             // 如果是视频，使用系统播放器播放
             if (photo.mimeType.startsWith("video/")) {
                 try {
-                    val intent: AndroidIntent = AndroidIntent(AndroidIntent.ACTION_VIEW).apply {
+                    val intent: android.content.Intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
                         setDataAndType(photo.uri, photo.mimeType)
-                        addFlags(AndroidIntent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     context.startActivity(intent)
                 } catch (e: Exception) {
@@ -223,28 +143,71 @@ fun PhotosScreen(
         }
     }
     
-    // 使用统一的照片列表组件
-    PhotoListScreen(
-        title = "照片和视频",
-        photos = allPhotos,
-        isLoading = isLoading,
-        error = error,
-        showDateHeaders = true, // 显示日期分组
-        baseColumnCount = 5,
-        onPhotoClick = handlePhotoClick,
-        onRetry = { viewModel.loadPhotos() },
-        onSettingsClick = {
-            // 显示设置对话框
-            showSettingsDialog()
-        },
-        enableZoom = true
-    )
-}
-
-/**
- * 显示设置对话框
- */
-private fun showSettingsDialog() {
-    // 这里可以添加设置对话框的显示逻辑
-    // 由于Compose的限制，我们需要在UI中处理对话框状态
+    // 使用Flow监听收藏状态
+    val favoritePhotoIds by sharedPhotoViewModel.favoritePhotoIds.collectAsState(initial = emptyList())
+    
+    // 直接使用PhotoGrid组件，不再依赖PhotoListScreen
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(text = "照片和视频") },
+                actions = {
+                    Text(
+                        text = "${allPhotos.size} 张照片",
+                        modifier = Modifier.padding(end = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            )
+        }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(it)
+        ) {
+            when {
+                isLoading -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                error != null -> {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = error ?: "",
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { sharedPhotoViewModel.loadPhotosByDate() }) {
+                            Text("重试")
+                        }
+                    }
+                }
+                allPhotos.isEmpty() -> {
+                    Text(
+                        text = "未找到照片或视频",
+                        modifier = Modifier.align(Alignment.Center),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                else -> {
+                    // 照片网格
+                    PhotoGrid(
+                        photos = allPhotos,
+                        columnCount = 5,
+                        showDateHeaders = true,
+                        onPhotoClick = handlePhotoClick,
+                        modifier = Modifier.fillMaxSize(),
+                        enableZoom = true,
+                        favoritePhotoIds = favoritePhotoIds
+                    )
+                }
+            }
+        }
+    }
 }

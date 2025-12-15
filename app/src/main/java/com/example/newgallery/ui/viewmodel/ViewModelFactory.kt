@@ -18,6 +18,10 @@ class ViewModelFactory(
         (context.applicationContext as NewGalleryApplication).photoRepository
     }
     
+    private val favoriteDao: com.example.newgallery.data.dao.FavoriteDao by lazy {
+        (context.applicationContext as NewGalleryApplication).favoriteDao
+    }
+    
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         when {
@@ -28,7 +32,7 @@ class ViewModelFactory(
                 return AlbumsViewModel(photoRepository) as T
             }
             modelClass.isAssignableFrom(SharedPhotoViewModel::class.java) -> {
-                return SharedPhotoViewModel(photoRepository) as T
+                return SharedPhotoViewModel(photoRepository, favoriteDao) as T
             }
             modelClass.isAssignableFrom(ScrollStateViewModel::class.java) -> {
                 return ScrollStateViewModel() as T

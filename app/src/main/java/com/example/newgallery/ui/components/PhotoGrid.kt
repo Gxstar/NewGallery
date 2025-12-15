@@ -25,7 +25,8 @@ fun PhotoGrid(
     onPhotoClick: (photo: Photo, index: Int) -> Unit,
     modifier: Modifier = Modifier,
     enableZoom: Boolean = true,
-    onZoomChange: ((Float) -> Unit)? = null
+    onZoomChange: ((Float) -> Unit)? = null,
+    favoritePhotoIds: List<Long> = emptyList()
 ) {
     // 支持手势缩放
     var currentColumnCount by remember { mutableStateOf(columnCount) }
@@ -137,6 +138,7 @@ private fun PhotoGridByDate(
             ) { photo ->
                 PhotoItem(
                     photo = photo,
+                    isFavorite = favoritePhotoIds.contains(photo.id),
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f),
@@ -173,13 +175,13 @@ private fun PhotoGridSimple(
         ) { photo ->
             PhotoItem(
                 photo = photo,
+                isFavorite = favoritePhotoIds.contains(photo.id),
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f),
                 onClick = {
                     val index = photos.indexOf(photo)
                     onPhotoClick(photo, index)
-                    
                 }
             )
         }

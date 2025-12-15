@@ -69,23 +69,18 @@ import android.provider.MediaStore
 import android.widget.Toast
 import android.util.Log
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotoDetailScreen(
     photoId: Long,
     initialIndex: Int,
     fromAlbum: Boolean,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    sharedViewModel: SharedPhotoViewModel
 ) {
-    Log.d("PhotoDetailScreen", "初始化PhotoDetailScreen: photoId=$photoId, initialIndex=$initialIndex, fromAlbum=$fromAlbum")
-    
-    var shouldExit by remember { mutableStateOf(false) }
-    val exitAlpha by animateFloatAsState(
-        targetValue = if (shouldExit) 0f else 1f,
-        animationSpec = tween(durationMillis = 300),
-        finishedListener = { if (it == 0f) onBackClick() }
-    )
+    // 简化动画效果，移除淡出动画
+    val exitAlpha by remember { mutableStateOf(1f) }
     val context = LocalContext.current
-    val sharedViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(context))
     
     // API 30+ 删除媒体文件不需要特殊权限
     
@@ -107,20 +102,6 @@ fun PhotoDetailScreen(
                 // This handles cases where we navigate directly to photo detail
                 sharedViewModel.loadAllPhotos()
             }
-        } else {
-            // When fromAlbum is true, wait for the album photos to be set
-            // Check multiple times with increasing delays
-            var attempts = 0
-            val maxAttempts = 10
-            while (attempts < maxAttempts && allPhotos.isEmpty()) {
-                attempts++
-                Log.d("PhotoDetailScreen", "等待照片数据加载，尝试 $attempts/${maxAttempts}")
-                kotlinx.coroutines.delay(200) // 200ms delay between attempts
-            }
-            Log.d("PhotoDetailScreen", "最终照片列表大小: ${allPhotos.size}")
-            if (allPhotos.isEmpty()) {
-                Log.e("PhotoDetailScreen", "照片列表仍然为空，显示错误状态")
-            }
         }
     }
     
@@ -129,32 +110,8 @@ fun PhotoDetailScreen(
     // When fromAlbum is false, we use all photos (either already loaded or will be loaded)
     val photos = allPhotos
     
-    // 添加一个状态来跟踪是否正在等待照片数据
-    var isWaitingForPhotos by remember { mutableStateOf(fromAlbum && photos.isEmpty()) }
-    
-    // 监听allPhotos的变化，当照片数据到达时更新等待状态
-    LaunchedEffect(allPhotos) {
-        Log.d("PhotoDetailScreen", "allPhotos更新: size=${allPhotos.size}, isWaitingForPhotos=$isWaitingForPhotos, fromAlbum=$fromAlbum")
-        if (allPhotos.isNotEmpty() && isWaitingForPhotos) {
-            Log.d("PhotoDetailScreen", "照片数据已到达，停止等待")
-            isWaitingForPhotos = false
-        }
-    }
-    
-    // 当fromAlbum为true时，确保等待SharedPhotoViewModel中的数据
-    LaunchedEffect(fromAlbum) {
-        if (fromAlbum && photos.isEmpty()) {
-            Log.d("PhotoDetailScreen", "fromAlbum=true且照片为空，开始等待SharedPhotoViewModel数据")
-            isWaitingForPhotos = true
-        }
-    }
-    
-    Log.d("PhotoDetailScreen", "fromAlbum: $fromAlbum, photoId: $photoId, initialIndex: $initialIndex")
-    Log.d("PhotoDetailScreen", "照片列表大小: ${photos.size}, 是否等待中: $isWaitingForPhotos")
-    if (photos.isNotEmpty()) {
-        Log.d("PhotoDetailScreen", "第一张照片ID: ${photos[0].id}, 最后一张照片ID: ${photos[photos.size-1].id}")
-        isWaitingForPhotos = false // 一旦有了照片，就不再等待
-    }
+    // 简化逻辑，直接使用photos，移除不必要的等待状态
+    // allPhotos已经是StateFlow，当它更新时，Composable会自动重新组合
     
     val initialPhotoIndex = remember(photos) {
         val index = photos.indexOfFirst { it.id == photoId }
@@ -168,7 +125,6 @@ fun PhotoDetailScreen(
     )
     
     // State for favorite and EXIF dialog
-    var isFavorite by remember { mutableStateOf(false) }
     var showExifDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     
@@ -180,39 +136,24 @@ fun PhotoDetailScreen(
     // Store current photo ID for deletion callback
     var currentPhotoId by remember { mutableLongStateOf(photoId) }
     
-    // Broadcast receiver to handle photo deletion events
-    val photoDeletedReceiver = remember {
-        object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: AndroidIntent?) {
-                when (intent?.action) {
-                    "com.example.newgallery.PHOTO_DELETED" -> {
-                        val deletedPhotoId = intent.getLongExtra("deleted_photo_id", -1)
-                        if (deletedPhotoId == currentPhotoId) {
-                            onBackClick()
-                        }
-                    }
-                    "com.example.newgallery.MEDIA_CHANGED" -> {
-                        // 可以在这里添加额外的处理逻辑
-                    }
-                }
+    // 使用Flow监听收藏状态
+    val favoritePhotoIds by sharedViewModel.favoritePhotoIds.collectAsState(initial = emptyList())
+    
+    // 计算当前照片是否被收藏
+    val currentPhotoIndex by pagerState.currentPageState
+    val isFavorite by remember {
+        derivedStateOf {
+            if (photos.isNotEmpty() && currentPhotoIndex < photos.size) {
+                val currentPhoto = photos[currentPhotoIndex]
+                favoritePhotoIds.contains(currentPhoto.id)
+            } else {
+                false
             }
         }
     }
     
-    // Register and unregister the broadcast receiver
-    DisposableEffect(context) {
-        val filter = android.content.IntentFilter().apply {
-            addAction("com.example.newgallery.PHOTO_DELETED")
-            addAction("com.example.newgallery.MEDIA_CHANGED")
-        }
-        
-        // API 30+ 使用RECEIVER_EXPORTED
-        context.registerReceiver(photoDeletedReceiver, filter, Context.RECEIVER_EXPORTED)
-        
-        onDispose {
-            context.unregisterReceiver(photoDeletedReceiver)
-        }
-    }
+    // 移除了广播接收器，简化代码结构
+    // 现在直接在删除操作后调用onBackClick()返回上一页
     
     // System UI control
     LaunchedEffect(isUIVisible) {
@@ -231,16 +172,6 @@ fun PhotoDetailScreen(
         }
     }
     
-    // Load favorite state when photo changes
-    LaunchedEffect(pagerState.currentPage) {
-        if (photos.isNotEmpty() && pagerState.currentPage < photos.size) {
-            val currentPhoto = photos[pagerState.currentPage]
-            isFavorite = isPhotoFavorite(context, currentPhoto.uri)
-            // Update current photo ID when page changes
-            currentPhotoId = currentPhoto.id
-        }
-    }
-    
     // Zoom state managed at the pager level
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
@@ -252,43 +183,8 @@ fun PhotoDetailScreen(
             .background(if (isUIVisible) MaterialTheme.colorScheme.background else Color.Black)
             .graphicsLayer(alpha = exitAlpha)
     ) {
-        if (photos.isEmpty() && !isWaitingForPhotos) {
-            // 只有当确定没有照片且不再等待时才显示错误
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    if (fromAlbum) {
-                        // When from album and no photos, show error message
-                        Text(
-                            text = "无法加载相册照片",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "照片列表为空",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        androidx.compose.material3.Button(
-                            onClick = onBackClick
-                        ) {
-                            Text("返回")
-                        }
-                    } else {
-                        // Normal loading state
-                        Text(text = "加载中...")
-                    }
-                }
-            }
-        } else if (photos.isEmpty() && isWaitingForPhotos) {
-            // 正在等待照片数据加载
+        if (photos.isEmpty()) {
+            // 照片列表为空时显示加载状态
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -489,17 +385,10 @@ fun PhotoDetailScreen(
                         isFavorite = isFavorite,
                     onFavoriteClick = { 
                             android.util.Log.d("PhotoDetail", "Favorite button clicked, current state: $isFavorite")
-                            val success = togglePhotoFavorite(context, currentPhoto.uri, isFavorite)
-                            android.util.Log.d("PhotoDetail", "Toggle result: $success")
-                            
-                            if (success) {
-                                // 立即更新UI状态
-                                isFavorite = !isFavorite
-                                android.util.Log.d("PhotoDetail", "UI updated to: $isFavorite")
-                            } else {
-                                // 如果数据库更新失败，仍然更新UI（用于测试）
-                                android.util.Log.w("PhotoDetail", "Database update failed, updating UI anyway")
-                                isFavorite = !isFavorite
+                            // 使用ViewModel的togglePhotoFavorite方法
+                            kotlinx.coroutines.launch {
+                                sharedViewModel.togglePhotoFavorite(currentPhoto.id)
+                                // UI状态会通过Flow自动更新，无需手动设置
                             }
                         },
                         onShareClick = { sharePhoto(context, currentPhoto.uri) },
@@ -1194,11 +1083,23 @@ private fun sharePhoto(context: Context, uri: Uri) {
 }
 
 private fun isPhotoFavorite(context: Context, uri: Uri): Boolean {
+    // 仅在API 29+支持收藏功能
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+        android.util.Log.d("PhotoDetail", "Favorite feature not supported on API < 29")
+        return false
+    }
+    
     return try {
         val contentResolver = context.contentResolver
+        val projection = arrayOf(
+            android.provider.MediaStore.MediaColumns.IS_FAVORITE
+        )
+        
+        android.util.Log.d("PhotoDetail", "Checking favorite status for URI: $uri")
+        
         val cursor = contentResolver.query(
             uri,
-            arrayOf(android.provider.MediaStore.Images.ImageColumns.IS_FAVORITE),
+            projection,
             null,
             null,
             null
@@ -1206,16 +1107,17 @@ private fun isPhotoFavorite(context: Context, uri: Uri): Boolean {
         
         cursor?.use { c ->
             if (c.moveToFirst()) {
-                val favoriteIndex = c.getColumnIndex(android.provider.MediaStore.Images.ImageColumns.IS_FAVORITE)
+                val favoriteIndex = c.getColumnIndex(android.provider.MediaStore.MediaColumns.IS_FAVORITE)
                 if (favoriteIndex >= 0) {
                     val favoriteValue = c.getInt(favoriteIndex)
-                    android.util.Log.d("PhotoDetail", "Favorite value: $favoriteValue")
+                    android.util.Log.d("PhotoDetail", "Favorite value from system: $favoriteValue")
                     return favoriteValue == 1
                 } else {
                     android.util.Log.d("PhotoDetail", "IS_FAVORITE column not found")
                 }
             }
         }
+        android.util.Log.d("PhotoDetail", "No favorite status found, returning false")
         false
     } catch (e: Exception) {
         android.util.Log.e("PhotoDetail", "Error checking favorite status", e)
@@ -1224,11 +1126,19 @@ private fun isPhotoFavorite(context: Context, uri: Uri): Boolean {
 }
 
 private fun togglePhotoFavorite(context: Context, uri: Uri, isFavorite: Boolean): Boolean {
+    // 仅在API 29+支持收藏功能
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+        android.util.Log.d("PhotoDetail", "Favorite feature not supported on API < 29")
+        return false
+    }
+    
     return try {
         val contentResolver = context.contentResolver
         val values = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.Images.ImageColumns.IS_FAVORITE, if (isFavorite) 0 else 1)
+            put(android.provider.MediaStore.MediaColumns.IS_FAVORITE, if (isFavorite) 0 else 1)
         }
+        
+        android.util.Log.d("PhotoDetail", "Updating favorite status for URI: $uri, current: $isFavorite, new: ${!isFavorite}")
         
         val rowsUpdated = contentResolver.update(uri, values, null, null)
         android.util.Log.d("PhotoDetail", "Updated favorite status: $rowsUpdated rows affected")
@@ -1296,23 +1206,25 @@ private fun formatPhotoDate(context: Context, photo: Photo): String {
 }
 
 /**
- * 使用MediaStore.createDeleteRequest删除照片 (Android 11+标准方法)
+ * 使用MediaStore删除照片 (API 30+标准方法)
  */
 private fun deletePhoto(context: Context, photoUri: Uri, photoId: Long) {
-    val mainActivity = context as? MainActivity
-    if (mainActivity != null) {
-        try {
-            // 创建删除请求
-            val contentResolver = context.contentResolver
-            val request = android.provider.MediaStore.createDeleteRequest(contentResolver, listOf(photoUri))
-            val intentSender = request.intentSender
-            mainActivity.launchDeleteRequest(intentSender, photoId)
-        } catch (e: Exception) {
-            android.util.Log.e("PhotoDetail", "创建删除请求失败", e)
-            android.widget.Toast.makeText(context, "删除失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+    try {
+        // API 30+ 直接使用ContentResolver.delete
+        val rowsDeleted = context.contentResolver.delete(
+            photoUri,
+            null,
+            null
+        )
+        
+        if (rowsDeleted > 0) {
+            android.widget.Toast.makeText(context, "照片已删除", android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            android.widget.Toast.makeText(context, "删除失败", android.widget.Toast.LENGTH_SHORT).show()
         }
-    } else {
-        android.widget.Toast.makeText(context, "删除失败: 无法获取Activity上下文", android.widget.Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        android.util.Log.e("PhotoDetail", "删除照片失败", e)
+        android.widget.Toast.makeText(context, "删除失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
     }
 }
 

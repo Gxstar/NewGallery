@@ -35,27 +35,16 @@ import com.example.newgallery.ui.viewmodel.ViewModelFactory
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumsScreen(
-    onAlbumClick: (album: com.example.newgallery.data.model.Album) -> Unit
+    onAlbumClick: (album: com.example.newgallery.data.model.Album) -> Unit,
+    sharedPhotoViewModel: SharedPhotoViewModel
 ) {
-    val context = LocalContext.current
-    val viewModel: AlbumsViewModel = viewModel(factory = ViewModelFactory(context))
-    val sharedViewModel: SharedPhotoViewModel = viewModel(factory = ViewModelFactory(context))
-    
-    val isLoading by viewModel.isLoading.collectAsState()
-    val albums by viewModel.albums.collectAsState()
-    val error by viewModel.error.collectAsState()
-    
-    // 使用通用权限处理
-    val permissionState = rememberPermissionState { isGranted ->
-        if (isGranted) {
-            viewModel.loadAlbums()
-            sharedViewModel.loadAllPhotos()
-        }
-    }
+    val isLoading by sharedPhotoViewModel.isLoading.collectAsState()
+    val albums by sharedPhotoViewModel.albums.collectAsState()
+    val error by sharedPhotoViewModel.error.collectAsState()
     
     // 请求权限当屏幕首次加载时
     LaunchedEffect(Unit) {
-        permissionState.requestPermission()
+        sharedPhotoViewModel.loadAlbums()
     }
     
     Column(modifier = Modifier.fillMaxSize()) {
@@ -74,23 +63,31 @@ fun AlbumsScreen(
         
         // 根据权限和状态显示不同内容
         when {
-            !permissionState.isGranted -> {
-                PermissionDeniedState(
-                    showRationale = permissionState.showRationale,
-                    onRequestPermission = { permissionState.requestPermission() }
-                )
-            }
             isLoading -> {
-                LoadingState()
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
             }
             error != null -> {
-                ErrorState(
-                    message = error ?: "未知错误",
-                    onRetry = { viewModel.loadAlbums() }
-                )
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.foundation.layout.Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = error ?: "未知错误",
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.error
+                        )
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
+                        androidx.compose.material3.Button(onClick = { sharedPhotoViewModel.loadAlbums() }) {
+                            androidx.compose.material3.Text("重试")
+                        }
+                    }
+                }
             }
             albums.isEmpty() -> {
-                EmptyState(message = "未找到相册")
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Text(text = "未找到相册")
+                }
             }
             else -> {
                 AlbumsGrid(
